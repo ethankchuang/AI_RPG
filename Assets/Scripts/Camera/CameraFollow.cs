@@ -1,0 +1,147 @@
+using UnityEngine;
+
+public class CameraFollow : MonoBehaviour
+{
+    [Header("Target")]
+    public Transform target; // The player or unit to follow
+    
+    [Header("Follow Settings")]
+    public float smoothSpeed = 5f; // Higher value = faster camera
+    public Vector3 offset = new Vector3(0, 0, -10); // Default for 2D games
+    
+    [Header("Bounds")]
+    public bool limitBounds = false;
+    public float minX = -10f;
+    public float maxX = 10f;
+    public float minY = -10f;
+    public float maxY = 10f;
+    
+    [Header("Auto-Target")]
+    [Tooltip("If true, will automatically find the player unit")]
+    public bool autoFindPlayer = true;
+    
+    private void Start()
+    {
+        // Try to find the player at startup
+        if (autoFindPlayer && target == null)
+        {
+            FindAndSetPlayerTarget();
+        }
+    }
+    
+    private void LateUpdate()
+    {
+        // If we don't have a target, try to find the player
+        if (target == null && autoFindPlayer)
+        {
+            FindAndSetPlayerTarget();
+        }
+        
+        // Don't update if we don't have a target
+        if (target == null)
+            return;
+            
+        // Calculate the desired position (target position + offset)
+        Vector3 desiredPosition = target.position + offset;
+        
+        // Smoothly move the camera toward that position
+        Vector3 smoothedPosition = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
+        
+        // Apply bounds limitation if enabled
+        if (limitBounds)
+        {
+            smoothedPosition.x = Mathf.Clamp(smoothedPosition.x, minX, maxX);
+            smoothedPosition.y = Mathf.Clamp(smoothedPosition.y, minY, maxY);
+        }
+        
+        // Update the camera position
+        transform.position = smoothedPosition;
+    }
+    
+    // Find the player unit and set it as the target
+    private void FindAndSetPlayerTarget()
+    {
+        // Try to get player unit
+        Unit playerUnit = FindPlayerUnit();
+        if (playerUnit != null)
+        {
+            target = playerUnit.transform;
+        }
+    }
+    
+    // Find the player unit
+    private Unit FindPlayerUnit()
+    {
+        Unit[] allUnits = FindObjectsOfType<Unit>();
+        
+        // Look for a unit with "Player" in the name
+        foreach (Unit unit in allUnits)
+        {
+            if (unit.gameObject.name.Contains("Player"))
+            {
+                return unit;
+            }
+        }
+        
+        // If that fails, try to get the player from GameManager
+        GameManager gameManager = GameManager.Instance;
+        if (gameManager != null && gameManager.selectedUnit != null)
+        {
+            return gameManager.selectedUnit;
+        }
+        
+        return null;
+    }
+    
+    // Set a new target for the camera to follow
+    public void SetTarget(Transform newTarget)
+    {
+        target = newTarget;
+    }
+    
+    // Set a new unit target for the camera to follow
+    public void SetTarget(Unit unit)
+    {
+        if (unit != null)
+        {
+            target = unit.transform;
+        }
+    }
+    
+    // Center on the player at current position (instant)
+    public void CenterOnTarget()
+    {
+        if (target != null)
+        {
+            Vector3 targetPos = target.position + offset;
+            
+            if (limitBounds)
+            {
+                targetPos.x = Mathf.Clamp(targetPos.x, minX, maxX);
+                targetPos.y = Mathf.Clamp(targetPos.y, minY, maxY);
+            }
+            
+            transform.position = targetPos;
+        }
+    }
+    
+    // Set the camera bounds based on the grid size
+    public void SetBoundsFromGrid(float gridWidth, float gridHeight, float hexRadius)
+    {
+        // Estimate grid world boundaries
+        float worldWidth = gridWidth * hexRadius * 1.5f;
+        float worldHeight = gridHeight * hexRadius * ROOT_3;
+        
+        // Expand slightly to account for hex radius
+        minX = -hexRadius;
+        maxX = worldWidth + hexRadius;
+        minY = -hexRadius;
+        maxY = worldHeight + hexRadius;
+        
+        // Enable bounds
+        limitBounds = true;
+    }
+    
+    // The √3 constant used in hexagon calculations
+    private const float ROOT_3 = 1.73205080757f;
+} 
