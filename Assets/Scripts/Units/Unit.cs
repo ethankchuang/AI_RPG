@@ -18,8 +18,8 @@ public class Unit : MonoBehaviour
     public SpriteRenderer spriteRenderer;
     
     [Header("Movement")]
-    public float moveSpeed = 5f;
-    public float tileStopDelay = 0.1f; // Time to pause at each tile during movement
+    public float moveSpeed = 2f;
+    public float tileStopDelay = 0.2f;
     
     // Current state
     public int currentHealth;
@@ -85,7 +85,14 @@ public class Unit : MonoBehaviour
     {
         HexTile closestTile = FindClosestTile();
         if (closestTile != null)
+        {
             currentTile = closestTile;
+            Debug.Log($"Updated current tile to {currentTile.name}");
+        }
+        else
+        {
+            Debug.LogWarning("Failed to find closest tile in UpdateCurrentTile");
+        }
     }
     
     // Find the closest tile to this unit
@@ -149,32 +156,33 @@ public class Unit : MonoBehaviour
             tile.ResetColor();
     }
     
-    // Get tiles within movement range using breadth-first search
+    // Get tiles within movement range using fringe-based algorithm
     private List<HexTile> GetTilesInRange(HexTile startTile, int range)
     {
         List<HexTile> result = new List<HexTile>();
-        Queue<HexTile> frontier = new Queue<HexTile>();
-        Dictionary<HexTile, int> costSoFar = new Dictionary<HexTile, int>();
+        HashSet<HexTile> visited = new HashSet<HexTile>();
+        List<List<HexTile>> fringes = new List<List<HexTile>>();
         
-        frontier.Enqueue(startTile);
-        costSoFar[startTile] = 0;
+        // Initialize with start tile
+        visited.Add(startTile);
+        fringes.Add(new List<HexTile> { startTile });
         
-        while (frontier.Count > 0)
+        // Process fringes for each movement point
+        for (int k = 1; k <= range; k++)
         {
-            HexTile current = frontier.Dequeue();
+            fringes.Add(new List<HexTile>());
             
-            foreach (HexTile next in current.neighbors)
+            foreach (HexTile hex in fringes[k-1])
             {
-                if (!next.isWalkable)
-                    continue;
-                    
-                int newCost = costSoFar[current] + next.movementCost;
-                
-                if (newCost <= range && (!costSoFar.ContainsKey(next) || newCost < costSoFar[next]))
+                foreach (HexTile neighbor in hex.neighbors)
                 {
-                    costSoFar[next] = newCost;
-                    frontier.Enqueue(next);
-                    result.Add(next);
+                    // Skip if already visited or not walkable (blocked by wall or other obstacle)
+                    if (visited.Contains(neighbor) || !neighbor.isWalkable)
+                        continue;
+                        
+                    visited.Add(neighbor);
+                    fringes[k].Add(neighbor);
+                    result.Add(neighbor);
                 }
             }
         }
@@ -185,83 +193,106 @@ public class Unit : MonoBehaviour
     // Move along a path of tiles
     public void MoveAlongPath(List<HexTile> path)
     {
-        // Validate path and state
-        if (path == null || path.Count < 2 || isMoving || hasMoved)
+        // Clear existing path
+        currentPath.Clear();
+        
+        // Validate path and unit state
+        if (path == null || path.Count < 2)
         {
-            Debug.LogWarning("Invalid movement: path is invalid or unit can't move");
+            Debug.LogError("MoveAlongPath: Invalid path (too short or null)");
             return;
         }
-
-        // Reset ALL tiles to default color
+        
+        if (isMoving || hasMoved)
+        {
+            Debug.LogError("MoveAlongPath: Unit is already moving or has moved");
+            return;
+        }
+        
+        // First, make sure we know what tile we're on
+        UpdateCurrentTile();
+        
+        // Reset all tiles to default color
         foreach (HexTile tile in FindObjectsOfType<HexTile>())
         {
             tile.ResetColor();
         }
         
-        // Store the path and start movement
+        // Debug the path
+        Debug.Log($"Path to follow: {path.Count} tiles");
+        for (int i = 0; i < path.Count; i++)
+        {
+            Debug.Log($"Tile {i}: {path[i].name} at {path[i].transform.position}");
+        }
+        
+        // Store the verified path
         currentPath = new List<HexTile>(path);
+        
+        // Start the movement coroutine
         StartCoroutine(MoveAlongPathCoroutine());
     }
     
-    // Coroutine to handle smooth movement
+    // Coroutine to handle smooth movement from tile to tile
     private IEnumerator MoveAlongPathCoroutine()
     {
-        // Set movement flags
+        // Set flags
         isMoving = true;
         IsAnyUnitMoving = true;
         
-        // Clear path highlights
-        if (gridManager != null)
-            gridManager.ClearPath();
-            
-        // Hide movement range
-        HideMovementRange();
-        
-        // Skip the first tile (current position)
+        // Skip the first tile which is the start position
         for (int i = 1; i < currentPath.Count; i++)
         {
-            // Reset previous tile color
-            if (i > 1)
-                currentPath[i-1].ResetColor();
-            else if (currentTile != null)
-                currentTile.ResetColor();
+            // Get the next tile in the path
+            HexTile nextTile = currentPath[i];
+            Debug.Log($"Moving to tile {i}/{currentPath.Count-1}: {nextTile.name}");
             
-            // Move smoothly to next tile
+            // Highlight the destination tile
+            foreach (HexTile tile in FindObjectsOfType<HexTile>())
+            {
+                tile.ResetColor();
+            }
+            nextTile.SetAsPathTile(true, true);
+            
+            // Calculate positions
             Vector3 startPos = transform.position;
-            Vector3 endPos = currentPath[i].transform.position;
+            Vector3 targetPos = nextTile.transform.position;
             
-            float distance = Vector3.Distance(startPos, endPos);
-            float moveTime = distance / moveSpeed;
+            // Move at a fixed speed for consistency
+            float distance = Vector3.Distance(startPos, targetPos);
+            float actualMoveTime = distance / moveSpeed;
             float elapsed = 0f;
             
-            while (elapsed < moveTime)
+            // Lerp to the next position
+            while (elapsed < actualMoveTime)
             {
-                transform.position = Vector3.Lerp(startPos, endPos, elapsed / moveTime);
+                float t = elapsed / actualMoveTime;
+                transform.position = Vector3.Lerp(startPos, targetPos, t);
                 elapsed += Time.deltaTime;
                 yield return null;
             }
             
-            // Snap to exact position and update current tile
-            transform.position = endPos;
-            currentTile = currentPath[i];
+            // Ensure we arrived exactly at the destination
+            transform.position = targetPos;
             
-            // Pause at each tile
+            // Update current tile
+            currentTile = nextTile;
+            
+            // Pause at each tile for clarity
             yield return new WaitForSeconds(tileStopDelay);
         }
         
-        // Movement complete
+        // Clean up
         isMoving = false;
         hasMoved = true;
-        
-        // Reset all path tile colors
-        foreach (HexTile tile in currentPath)
-            tile.ResetColor();
-        
-        // Update unit state
-        UpdateCurrentTile();
-        
-        // Clear the static movement flag
         IsAnyUnitMoving = false;
+        
+        // Reset all tile colors
+        foreach (HexTile tile in FindObjectsOfType<HexTile>())
+        {
+            tile.ResetColor();
+        }
+        
+        Debug.Log("Movement complete");
     }
     
     // Reset unit for a new turn

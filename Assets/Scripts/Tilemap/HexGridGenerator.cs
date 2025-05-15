@@ -4,6 +4,7 @@ public class HexGridGenerator : MonoBehaviour
 {
     [Header("Grid Settings")]
     public GameObject hexTilePrefab;
+    public GameObject wallTilePrefab;
     public int gridWidth = 10;
     public int gridHeight = 10;
     public float hexRadius = 1f; // Distance from center to corner
@@ -12,12 +13,45 @@ public class HexGridGenerator : MonoBehaviour
 
     void Start()
     {
+        // Set up wall tile prefab if not assigned
+        SetupWallTilePrefab();
+        
         GenerateGrid();
+    }
+    
+    public void SetupWallTilePrefab()
+    {
+        if (wallTilePrefab == null && hexTilePrefab != null)
+        {
+            // Clone the hex tile prefab to create a wall tile prefab
+            wallTilePrefab = Instantiate(hexTilePrefab);
+            wallTilePrefab.name = "WallTilePrefab";
+            
+            // Add WallTile component if not present
+            if (wallTilePrefab.GetComponent<WallTile>() == null)
+            {
+                // Remove HexTile component if present (prevents component conflict)
+                HexTile existingHexTile = wallTilePrefab.GetComponent<HexTile>();
+                if (existingHexTile != null && !(existingHexTile is WallTile))
+                {
+                    DestroyImmediate(existingHexTile);
+                }
+                
+                // Add WallTile component
+                wallTilePrefab.AddComponent<WallTile>();
+            }
+            
+            // Hide in hierarchy
+            wallTilePrefab.SetActive(false);
+        }
     }
     
     [ContextMenu("Generate Grid")]
     public void GenerateGrid()
     {
+        // Set up wall tile prefab if not assigned
+        SetupWallTilePrefab();
+        
         // Clear existing grid if any
         while (transform.childCount > 0)
             DestroyImmediate(transform.GetChild(0).gameObject);
@@ -58,10 +92,22 @@ public class HexGridGenerator : MonoBehaviour
                 GameObject tile = Instantiate(hexTilePrefab, position, Quaternion.identity, transform);
                 
                 // Set tile properties and name
-                tile.name = $"Hex_{col}_{row}";
+                tile.name = $"GrassTile_{col}_{row}";
                 
-                // Get and set the HexTile component
+                // Get HexTile component
                 HexTile hexTile = tile.GetComponent<HexTile>();
+                
+                // If it doesn't have a GrassTile, add one
+                if (!(hexTile is GrassTile))
+                {
+                    // Remove the generic HexTile if it exists
+                    if (hexTile != null)
+                        DestroyImmediate(hexTile);
+                        
+                    // Add GrassTile component
+                    hexTile = tile.AddComponent<GrassTile>();
+                }
+                
                 if (hexTile != null)
                 {
                     hexTile.Initialize(col, row);

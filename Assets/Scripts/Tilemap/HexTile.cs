@@ -18,25 +18,22 @@ public class HexTile : MonoBehaviour
     [Header("Visual")]
     public SpriteRenderer spriteRenderer;
     public Color defaultColor = Color.white;
-    public Color highlightColor = Color.yellow;
     public Color invalidColor = Color.red;
-    public Color validPathColor = new Color(0.0f, 1f, 1f, 1f);   // Bright cyan
-    public Color invalidPathColor = new Color(1f, 0.0f, 0.0f, 1f); // Pure red
+    public Color pathColor = new Color(0.0f, 1f, 1f, 1f); // Cyan for valid paths
     
     // Neighbors for pathfinding
     public List<HexTile> neighbors = new List<HexTile>();
     
     // State
-    private bool isHighlighted = false;
-    private bool isPartOfPath = false;
-    private bool isValidPath = true;
+    protected bool isPartOfPath = false;
+    protected bool isValidPath = true;
     
     // References
-    private HexGridManager gridManager;
+    protected HexGridManager gridManager;
     #endregion
     
     #region Initialization
-    private void Awake()
+    protected virtual void Awake()
     {
         if (spriteRenderer == null)
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
@@ -47,7 +44,7 @@ public class HexTile : MonoBehaviour
             Debug.LogError("Could not find HexGridManager!");
     }
     
-    public void Initialize(int col, int row)
+    public virtual void Initialize(int col, int row)
     {
         this.column = col;
         this.row = row;
@@ -55,19 +52,44 @@ public class HexTile : MonoBehaviour
         // Create cube coordinates from offset coordinates
         this.cubeCoords = HexCoordinates.FromOffsetCoordinates(col, row);
         
+        ApplyTileTypeProperties();
+        
+        UpdateVisuals();
+    }
+    
+    // Apply properties based on tile type
+    protected virtual void ApplyTileTypeProperties()
+    {
+        // Override in child classes for specific behavior
+        switch (tileType)
+        {
+            case TileType.Wall:
+                isWalkable = false;
+                break;
+            default:
+                isWalkable = true;
+                break;
+        }
+    }
+    
+    // Update visuals based on tile type
+    protected virtual void UpdateVisuals()
+    {
         if (spriteRenderer != null)
-            spriteRenderer.color = defaultColor;
+        {
+            // Only override color if not already set in prefab
+            if (spriteRenderer.color == Color.white)
+                spriteRenderer.color = defaultColor;
+        }
     }
     #endregion
     
     #region Mouse Interactions
-    private void OnMouseEnter()
+    protected virtual void OnMouseEnter()
     {
         // Skip path visualization if any unit is currently moving
         if (Unit.IsAnyUnitMoving)
             return;
-        
-        isHighlighted = true;
         
         // First, reset all other tiles to default color
         foreach (HexTile tile in FindObjectsOfType<HexTile>())
@@ -79,32 +101,58 @@ public class HexTile : MonoBehaviour
         // Handle path visualization
         if (gridManager != null)
             gridManager.ShowPathToTile(this);
-        else if (spriteRenderer != null)
-            spriteRenderer.color = highlightColor;
     }
     
-    private void OnMouseExit()
+    protected virtual void OnMouseExit()
     {
-        isHighlighted = false;
-        
         // Clear tile colors
         if (gridManager != null)
             gridManager.ClearPath();
         
-        if (spriteRenderer != null)
+        if (spriteRenderer != null && !isPartOfPath)
             spriteRenderer.color = defaultColor;
     }
     
-    private void OnMouseDown()
+    protected virtual void OnMouseDown()
     {
+        // Don't process clicks if any unit is moving
+        if (Unit.IsAnyUnitMoving)
+            return;
+            
+        if (Input.GetMouseButton(0)) // Left click (movement)
+        {
+            if (gridManager != null)
+                gridManager.ExecuteMovementToTile(this);
+        }
+    }
+    
+    protected virtual void OnMouseOver()
+    {
+        // Handle right-click while mouse is over the tile
+        if (Input.GetMouseButtonDown(1)) // Right click (place wall)
+        {
+            // Don't place walls while units are moving
+            if (Unit.IsAnyUnitMoving)
+                return;
+                
+            ConvertToWall();
+        }
+    }
+    
+    // Convert this tile to a wall
+    protected virtual void ConvertToWall()
+    {
+        // Create a wall tile at this position
         if (gridManager != null)
-            gridManager.ExecuteMovementToTile(this);
+        {
+            gridManager.ReplaceWithWallTile(this);
+        }
     }
     #endregion
     
     #region Visual State
     // Set this tile as part of a path
-    public void SetAsPathTile(bool isPath, bool isValid)
+    public virtual void SetAsPathTile(bool isPath, bool isValid)
     {
         isPartOfPath = isPath;
         isValidPath = isValid;
@@ -113,19 +161,16 @@ public class HexTile : MonoBehaviour
             return;
             
         if (isPath)
-            spriteRenderer.color = isValid ? validPathColor : invalidPathColor;
-        else if (isHighlighted)
-            spriteRenderer.color = highlightColor;
+            spriteRenderer.color = isValid ? pathColor : invalidColor;
         else
             spriteRenderer.color = defaultColor;
     }
     
     // Reset tile color to default
-    public void ResetColor()
+    public virtual void ResetColor()
     {
         // Reset internal state
         isPartOfPath = false;
-        isHighlighted = false;
         
         // Force color reset
         if (spriteRenderer != null)
@@ -139,12 +184,12 @@ public class HexTile : MonoBehaviour
     }
     
     // Flash a color briefly to indicate feedback
-    public void FlashColor(Color flashColor, float duration)
+    public virtual void FlashColor(Color flashColor, float duration)
     {
         StartCoroutine(FlashColorCoroutine(flashColor, duration));
     }
     
-    private IEnumerator FlashColorCoroutine(Color flashColor, float duration)
+    protected virtual IEnumerator FlashColorCoroutine(Color flashColor, float duration)
     {
         if (spriteRenderer == null) yield break;
         
@@ -152,6 +197,16 @@ public class HexTile : MonoBehaviour
         spriteRenderer.color = flashColor;
         yield return new WaitForSeconds(duration);
         spriteRenderer.color = originalColor;
+    }
+    #endregion
+    
+    #region Tile Type Conversion
+    // Convert to a different tile type
+    public virtual void ConvertToType(TileType newType)
+    {
+        tileType = newType;
+        ApplyTileTypeProperties();
+        UpdateVisuals();
     }
     #endregion
 }
@@ -164,5 +219,6 @@ public enum TileType
     Mountain,
     Forest,
     Desert,
-    Snow
+    Snow,
+    Wall
 }
