@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Collections;
+using UnityEngine.EventSystems;
 
 public class HexTile : MonoBehaviour
 {
@@ -85,8 +86,18 @@ public class HexTile : MonoBehaviour
     #endregion
     
     #region Mouse Interactions
+    // Check if the pointer is over a UI element
+    protected bool IsPointerOverUI()
+    {
+        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    }
+    
     protected virtual void OnMouseEnter()
     {
+        // Skip if pointer is over UI
+        if (IsPointerOverUI())
+            return;
+            
         // Skip path visualization if any unit is currently moving
         if (Unit.IsAnyUnitMoving)
             return;
@@ -105,6 +116,10 @@ public class HexTile : MonoBehaviour
     
     protected virtual void OnMouseExit()
     {
+        // Skip if pointer is over UI
+        if (IsPointerOverUI())
+            return;
+            
         // Clear tile colors
         if (gridManager != null)
             gridManager.ClearPath();
@@ -115,6 +130,10 @@ public class HexTile : MonoBehaviour
     
     protected virtual void OnMouseDown()
     {
+        // Skip if pointer is over UI
+        if (IsPointerOverUI())
+            return;
+            
         // Don't process clicks if any unit is moving
         if (Unit.IsAnyUnitMoving)
             return;
@@ -128,6 +147,10 @@ public class HexTile : MonoBehaviour
     
     protected virtual void OnMouseOver()
     {
+        // Skip if pointer is over UI
+        if (IsPointerOverUI())
+            return;
+            
         // Handle right-click while mouse is over the tile
         if (Input.GetMouseButtonDown(1)) // Right click (place wall)
         {

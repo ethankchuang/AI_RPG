@@ -6,10 +6,11 @@ This project contains a basic framework for a top-down strategy game using hexag
 
 - Hexagonal grid generation with proper spacing
 - Turn-based gameplay system
-- Unit movement and selection
+- Unit movement with per-turn movement points
 - Basic UI for game state
 - Simple AI framework
 - Tile-based movement and path highlighting
+- UI event handling to prevent accidental tile clicks
 
 ## Setup Instructions
 
@@ -18,6 +19,7 @@ This project contains a basic framework for a top-down strategy game using hexag
    - Create an empty GameObject called "GameManager" and attach the `GameManager.cs` script
    - Create an empty GameObject called "Grid" and attach the `HexGridGenerator.cs` and `HexGridManager.cs` scripts
    - Create an empty GameObject called "UI" and attach the `GameUI.cs` script
+   - Ensure an EventSystem exists in your scene (created automatically if missing)
 
 2. **Set Up the Hexagon Tile Prefab:**
 
@@ -47,10 +49,9 @@ This project contains a basic framework for a top-down strategy game using hexag
 
 6. **Set Up the UI:**
 
-   - Create buttons for ending turn and restarting
-   - Create text elements for displaying game state
-   - Create panels for victory and defeat states
-   - Assign all UI elements to the GameUI component
+   - Create button for ending the turn
+   - Create a button for toggling move mode
+   - Position UI elements so they don't overlap important game areas
 
 ## How It Works
 
@@ -63,10 +64,20 @@ The hex grid uses a row-based system for placing tiles:
 
 ### Unit Movement
 
-Units can move a certain number of tiles per turn:
-- Click on a unit to select it and see its movement range
+Units can move a certain number of tiles per turn based on movement points:
+- Click the "Move" button to enter move mode
+- The tiles within range will be highlighted
 - Click on a highlighted tile to move the unit
-- Movement is tracked per turn (units can only move once)
+- Movement is tracked by remaining movement points, allowing multiple moves per turn
+- The same unit can move multiple times as long as it has movement points left
+- Click the "Move" button again to exit move mode
+
+### UI Interaction
+
+The game includes proper UI interaction handling:
+- UI elements properly block clicks on tiles beneath them
+- Click on UI buttons will not trigger tile selection or movement
+- EventSystem handles all input priority correctly
 
 ### Turn System
 

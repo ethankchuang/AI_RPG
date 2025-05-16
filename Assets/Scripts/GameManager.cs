@@ -346,14 +346,12 @@ public class GameManager : MonoBehaviour
     private void HandleVictory()
     {
         Debug.Log("Victory!");
-        // In a full game, show victory UI
     }
     
     // Handle defeat
     private void HandleDefeat()
     {
         Debug.Log("Defeat!");
-        // In a full game, show defeat UI
     }
     #endregion
 } 

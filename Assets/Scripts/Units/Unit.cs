@@ -24,8 +24,10 @@ public class Unit : MonoBehaviour
     // Current state
     public int currentHealth;
     public bool hasMoved = false;
+    public int remainingMovementPoints;
     public bool hasAttacked = false;
     private bool isMoving = false;
+    public bool isInMoveMode = false;
     
     // References
     private HexTile currentTile;
@@ -43,6 +45,7 @@ public class Unit : MonoBehaviour
             Debug.LogError($"Unit {gameObject.name} has no SpriteRenderer!");
             
         currentHealth = maxHealth;
+        remainingMovementPoints = movementPoints;
         
         // Find manager references
         gridManager = FindObjectOfType<HexGridManager>();
@@ -121,7 +124,8 @@ public class Unit : MonoBehaviour
     // These are kept for GameManager compatibility but simplified
     public void Select()
     {
-        ShowMovementRange();
+        if (isInMoveMode)
+            ShowMovementRange();
     }
     
     public void Deselect()
@@ -129,13 +133,28 @@ public class Unit : MonoBehaviour
         HideMovementRange();
     }
     
-    // Show tiles within movement range
-    private void ShowMovementRange()
+    // Toggle move mode
+    public void ToggleMoveMode()
     {
-        if (currentTile == null || hasMoved)
+        isInMoveMode = !isInMoveMode;
+        
+        if (isInMoveMode && remainingMovementPoints > 0)
+        {
+            ShowMovementRange();
+        }
+        else
+        {
+            HideMovementRange();
+        }
+    }
+    
+    // Show tiles within movement range
+    public void ShowMovementRange()
+    {
+        if (currentTile == null || remainingMovementPoints <= 0)
             return;
             
-        List<HexTile> tilesInRange = GetTilesInRange(currentTile, movementPoints);
+        List<HexTile> tilesInRange = GetTilesInRange(currentTile, remainingMovementPoints);
         
         // First reset all tiles
         foreach (HexTile tile in FindObjectsOfType<HexTile>())
@@ -203,9 +222,9 @@ public class Unit : MonoBehaviour
             return;
         }
         
-        if (isMoving || hasMoved)
+        if (isMoving || remainingMovementPoints <= 0 || !isInMoveMode)
         {
-            Debug.LogError("MoveAlongPath: Unit is already moving or has moved");
+            Debug.LogError("MoveAlongPath: Unit is already moving, has no movement points left, or is not in move mode");
             return;
         }
         
@@ -283,16 +302,34 @@ public class Unit : MonoBehaviour
         
         // Clean up
         isMoving = false;
-        hasMoved = true;
-        IsAnyUnitMoving = false;
         
-        // Reset all tile colors
-        foreach (HexTile tile in FindObjectsOfType<HexTile>())
+        // Reduce remaining movement points by the number of tiles moved
+        // (excluding the starting tile)
+        int tilesTraversed = currentPath.Count - 1;
+        remainingMovementPoints -= tilesTraversed;
+        if (remainingMovementPoints <= 0)
         {
-            tile.ResetColor();
+            remainingMovementPoints = 0;
+            hasMoved = true;
         }
         
-        Debug.Log("Movement complete");
+        IsAnyUnitMoving = false;
+        
+        // Show updated movement range if we still have points left
+        if (isInMoveMode && remainingMovementPoints > 0)
+        {
+            ShowMovementRange();
+        }
+        else
+        {
+            // Reset all tile colors
+            foreach (HexTile tile in FindObjectsOfType<HexTile>())
+            {
+                tile.ResetColor();
+            }
+        }
+        
+        Debug.Log($"Movement complete. Remaining movement points: {remainingMovementPoints}");
     }
     
     // Reset unit for a new turn
@@ -300,6 +337,8 @@ public class Unit : MonoBehaviour
     {
         hasMoved = false;
         hasAttacked = false;
+        remainingMovementPoints = movementPoints;
+        isInMoveMode = false;
     }
     
     // Take damage

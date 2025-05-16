@@ -205,7 +205,11 @@ public class HexGridManager : MonoBehaviour
         ClearPath();
         
         // Validate player unit state
-        if (playerUnit == null || playerUnit.hasMoved)
+        if (playerUnit == null)
+            return;
+        
+        // Only show path if in move mode
+        if (!playerUnit.isInMoveMode || playerUnit.remainingMovementPoints <= 0)
             return;
         
         // Find the current tile of the player unit
@@ -227,7 +231,7 @@ public class HexGridManager : MonoBehaviour
             currentPath = path;
             
             // Check if path is within movement range
-            bool isWithinRange = path.Count - 1 <= playerUnit.movementPoints;
+            bool isWithinRange = path.Count - 1 <= playerUnit.remainingMovementPoints;
             bool isValidDestination = targetTile.isWalkable && !IsUnitOnTile(targetTile);
             bool isPathValid = isWithinRange && isValidDestination;
             
@@ -271,9 +275,16 @@ public class HexGridManager : MonoBehaviour
             return;
         }
         
-        if (playerUnit.hasMoved)
+        // Check if player is in move mode and has movement points
+        if (!playerUnit.isInMoveMode)
         {
-            Debug.LogError("ExecuteMovementToTile: Player has already moved");
+            Debug.LogError("ExecuteMovementToTile: Player is not in move mode");
+            return;
+        }
+        
+        if (playerUnit.remainingMovementPoints <= 0)
+        {
+            Debug.LogError("ExecuteMovementToTile: Player has no movement points left");
             return;
         }
         
@@ -322,9 +333,9 @@ public class HexGridManager : MonoBehaviour
         }
         
         // Check if path is within movement range
-        if (path.Count - 1 > playerUnit.movementPoints)
+        if (path.Count - 1 > playerUnit.remainingMovementPoints)
         {
-            Debug.LogError($"ExecuteMovementToTile: Path too long ({path.Count-1} steps, {playerUnit.movementPoints} allowed)");
+            Debug.LogError($"ExecuteMovementToTile: Path too long ({path.Count-1} steps, {playerUnit.remainingMovementPoints} allowed)");
             // Show invalid path
             foreach (HexTile tile in path)
                 tile.SetAsPathTile(true, false);

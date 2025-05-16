@@ -1,25 +1,35 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 
 public class GameUI : MonoBehaviour
 {
     [Header("UI References")]
     public Button endTurnButton;
-    public TextMeshProUGUI turnText;
-    public GameObject victoryPanel;
-    public GameObject defeatPanel;
-    
-    [Header("Unit Info")]
-    public GameObject unitInfoPanel;
-    public TextMeshProUGUI unitNameText;
-    public TextMeshProUGUI unitMovementText;
+    public Button moveButton;
     
     [Header("Button Colors")]
     public Color waitingColor = Color.yellow;
     public Color readyColor = Color.green;
+    public Color activeModeColor = Color.cyan;
+    public Color inactiveModeColor = Color.white;
     
     private GameManager gameManager;
+    private EventSystem eventSystem;
+    
+    private void Awake()
+    {
+        // Make sure we have an EventSystem
+        eventSystem = FindObjectOfType<EventSystem>();
+        if (eventSystem == null)
+        {
+            Debug.LogWarning("No EventSystem found in the scene. Creating one...");
+            GameObject eventSystemObj = new GameObject("EventSystem");
+            eventSystem = eventSystemObj.AddComponent<EventSystem>();
+            eventSystemObj.AddComponent<StandaloneInputModule>();
+        }
+    }
     
     private void Start()
     {
@@ -32,16 +42,8 @@ public class GameUI : MonoBehaviour
         if (endTurnButton != null)
             endTurnButton.onClick.AddListener(OnEndTurnClicked);
             
-        // Hide victory/defeat panels
-        if (victoryPanel != null)
-            victoryPanel.SetActive(false);
-            
-        if (defeatPanel != null)
-            defeatPanel.SetActive(false);
-            
-        // Hide unit info panel
-        if (unitInfoPanel != null)
-            unitInfoPanel.SetActive(false);
+        if (moveButton != null)
+            moveButton.onClick.AddListener(OnMoveButtonClicked);
             
         // Update UI for initial state
         UpdateUI(GameState.InitGame);
@@ -49,8 +51,9 @@ public class GameUI : MonoBehaviour
     
     private void Update()
     {
-        // Update end turn button color based on player unit status
+        // Update button colors based on game state
         UpdateEndTurnButtonColor();
+        UpdateMoveButtonColor();
     }
     
     // Update UI based on game state
@@ -59,34 +62,37 @@ public class GameUI : MonoBehaviour
         switch (state)
         {
             case GameState.PlayerTurn:
-                if (turnText != null)
-                    turnText.text = "Player Turn";
                 if (endTurnButton != null)
                 {
                     endTurnButton.interactable = true;
                     UpdateEndTurnButtonColor();
                 }
+                if (moveButton != null)
+                {
+                    moveButton.interactable = true;
+                    UpdateMoveButtonColor();
+                }
                 break;
                 
             case GameState.EnemyTurn:
-                if (turnText != null)
-                    turnText.text = "Enemy Turn";
                 if (endTurnButton != null)
                     endTurnButton.interactable = false;
+                if (moveButton != null)
+                    moveButton.interactable = false;
                 break;
                 
             case GameState.Victory:
-                if (victoryPanel != null)
-                    victoryPanel.SetActive(true);
                 if (endTurnButton != null)
                     endTurnButton.interactable = false;
+                if (moveButton != null)
+                    moveButton.interactable = false;
                 break;
                 
             case GameState.Defeat:
-                if (defeatPanel != null)
-                    defeatPanel.SetActive(true);
                 if (endTurnButton != null)
                     endTurnButton.interactable = false;
+                if (moveButton != null)
+                    moveButton.interactable = false;
                 break;
         }
     }
@@ -109,36 +115,47 @@ public class GameUI : MonoBehaviour
             buttonImage.color = waitingColor; // Yellow when waiting for player to move
     }
     
+    // Update move button color based on move mode status
+    private void UpdateMoveButtonColor()
+    {
+        if (moveButton == null || gameManager == null || gameManager.selectedUnit == null)
+            return;
+            
+        // Get the button's image component
+        Image buttonImage = moveButton.GetComponent<Image>();
+        if (buttonImage == null)
+            return;
+            
+        // Update button color based on move mode
+        Unit playerUnit = gameManager.selectedUnit;
+        if (playerUnit.isInMoveMode && playerUnit.remainingMovementPoints > 0)
+        {
+            buttonImage.color = activeModeColor;  // Cyan when in move mode
+        }
+        else
+        {
+            buttonImage.color = inactiveModeColor; // White when not in move mode
+        }
+        
+        // Disable move button if no movement points left
+        moveButton.interactable = (playerUnit.remainingMovementPoints > 0);
+    }
+    
+    // Move button clicked
+    public void OnMoveButtonClicked()
+    {
+        if (gameManager == null || gameManager.selectedUnit == null)
+            return;
+            
+        // Toggle move mode on the player unit
+        gameManager.selectedUnit.ToggleMoveMode();
+    }
+    
     // End turn button clicked
     public void OnEndTurnClicked()
     {
         if (gameManager != null)
             gameManager.EndPlayerTurn();
-    }
-    
-    // Show unit info
-    public void ShowUnitInfo(Unit unit)
-    {
-        if (unitInfoPanel == null || unit == null)
-            return;
-            
-        unitInfoPanel.SetActive(true);
-        
-        if (unitNameText != null)
-            unitNameText.text = unit.unitName;
-            
-        if (unitMovementText != null)
-        {
-            string moveStatus = unit.hasMoved ? "Moved" : "Ready";
-            unitMovementText.text = $"Movement: {moveStatus}";
-        }
-    }
-    
-    // Hide unit info
-    public void HideUnitInfo()
-    {
-        if (unitInfoPanel != null)
-            unitInfoPanel.SetActive(false);
     }
     
     // Restart game button
