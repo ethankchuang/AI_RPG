@@ -20,17 +20,106 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("If true, will automatically find the player unit")]
     public bool autoFindPlayer = true;
     
+    [Header("Camera Drag")]
+    public bool enableDragging = true;
+    public float dragSpeed = 2.0f;
+    private bool isDragging = false;
+    private Vector3 dragOrigin;
+    
+    [Header("Zoom Settings")]
+    public bool enableZoom = true;
+    public float zoomSpeed = 2.0f;
+    public float minZoom = 2.0f;
+    public float maxZoom = 15.0f;
+    private Camera mainCamera;
+    
+    private void Awake()
+    {
+        mainCamera = GetComponent<Camera>();
+        if (mainCamera == null)
+        {
+            mainCamera = Camera.main;
+        }
+    }
+    
     private void Start()
     {
         // Try to find the player at startup
-        if (autoFindPlayer && target == null)
+        if (autoFindPlayer && target == null && !enableDragging)
         {
             FindAndSetPlayerTarget();
         }
     }
     
+    private void Update()
+    {
+        if (enableDragging)
+        {
+            HandleDragging();
+        }
+        
+        if (enableZoom)
+        {
+            HandleZoom();
+        }
+    }
+    
+    private void HandleZoom()
+    {
+        if (mainCamera == null)
+            return;
+            
+        float scrollInput = Input.GetAxis("Mouse ScrollWheel");
+        
+        // Only process if there's actual scroll input
+        if (scrollInput != 0)
+        {
+            // Calculate new orthographic size
+            float newSize = mainCamera.orthographicSize - scrollInput * zoomSpeed;
+            
+            // Clamp between min and max zoom levels
+            mainCamera.orthographicSize = Mathf.Clamp(newSize, minZoom, maxZoom);
+        }
+    }
+    
+    private void HandleDragging()
+    {
+        if (Input.GetMouseButtonDown(1))
+        {
+            isDragging = true;
+            dragOrigin = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        }
+        
+        if (Input.GetMouseButtonUp(1))
+        {
+            isDragging = false;
+        }
+        
+        if (isDragging)
+        {
+            Vector3 currentPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            Vector3 difference = dragOrigin - currentPosition;
+            
+            // Move the camera by the difference
+            transform.position += difference;
+            
+            // Apply bounds limitation if enabled
+            if (limitBounds)
+            {
+                Vector3 position = transform.position;
+                position.x = Mathf.Clamp(position.x, minX, maxX);
+                position.y = Mathf.Clamp(position.y, minY, maxY);
+                transform.position = position;
+            }
+        }
+    }
+    
     private void LateUpdate()
     {
+        // Skip following if dragging is enabled
+        if (enableDragging)
+            return;
+        
         // If we don't have a target, try to find the player
         if (target == null && autoFindPlayer)
         {
@@ -122,6 +211,27 @@ public class CameraFollow : MonoBehaviour
             }
             
             transform.position = targetPos;
+        }
+    }
+    
+    // Toggle between dragging and following
+    public void ToggleDragging()
+    {
+        enableDragging = !enableDragging;
+    }
+    
+    // Enable or disable zoom
+    public void ToggleZoom()
+    {
+        enableZoom = !enableZoom;
+    }
+    
+    // Reset zoom to default
+    public void ResetZoom(float defaultSize = 5f)
+    {
+        if (mainCamera != null)
+        {
+            mainCamera.orthographicSize = defaultSize;
         }
     }
     

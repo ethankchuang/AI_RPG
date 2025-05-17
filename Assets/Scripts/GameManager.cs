@@ -29,8 +29,9 @@ public class GameManager : MonoBehaviour
     
     // State
     private GameState currentState;
-    private List<Unit> playerUnits = new List<Unit>();
-    private List<Unit> enemyUnits = new List<Unit>();
+    private List<Player> playerUnits = new List<Player>();
+    private List<Enemy> enemyUnits = new List<Enemy>();
+    private List<Unit> genericUnits = new List<Unit>(); // For any units that don't inherit from Player/Enemy
     public Unit selectedUnit;
     
     // Properties
@@ -120,6 +121,7 @@ public class GameManager : MonoBehaviour
         // Clear any existing units
         playerUnits.Clear();
         enemyUnits.Clear();
+        genericUnits.Clear();
         
         // Place units
         PlaceInitialUnits(true);  // Player units
@@ -142,12 +144,12 @@ public class GameManager : MonoBehaviour
             
             // Share the reference with grid manager
             if (gridManager != null)
-                gridManager.playerUnit = selectedUnit;
+                gridManager.playerUnit = playerUnits[0];
             
             // Focus camera on player unit
             if (cameraFollow != null)
             {
-                cameraFollow.SetTarget(selectedUnit);
+                cameraFollow.SetTarget(playerUnits[0]);
                 cameraFollow.CenterOnTarget();
             }
         }
@@ -159,7 +161,7 @@ public class GameManager : MonoBehaviour
     private void StartPlayerTurn()
     {
         // Reset all player units
-        foreach (Unit unit in playerUnits)
+        foreach (Player unit in playerUnits)
         {
             if (unit != null)
                 unit.ResetForNewTurn();
@@ -182,7 +184,7 @@ public class GameManager : MonoBehaviour
     private void StartEnemyTurn()
     {
         // Reset all enemy units
-        foreach (Unit unit in enemyUnits)
+        foreach (Enemy unit in enemyUnits)
         {
             if (unit != null)
                 unit.ResetForNewTurn();
@@ -195,8 +197,14 @@ public class GameManager : MonoBehaviour
     // Execute enemy turn logic
     private void ExecuteEnemyTurn()
     {
+        // Execute AI behavior for each enemy unit
+        foreach (Enemy enemy in enemyUnits)
+        {
+            if (enemy != null)
+                enemy.ExecuteTurn();
+        }
+        
         // End enemy turn after a delay
-        // In a full game, implement AI logic here
         Invoke(nameof(EndEnemyTurn), 1.0f);
     }
     
@@ -228,6 +236,10 @@ public class GameManager : MonoBehaviour
         // Update active unit
         selectedUnit = unit;
         
+        // If it's a player unit, update grid manager reference
+        if (unit is Player playerUnit && gridManager != null)
+            gridManager.playerUnit = playerUnit;
+        
         // Update camera to follow the unit
         if (selectedUnit != null && cameraFollow != null)
             cameraFollow.SetTarget(selectedUnit);
@@ -236,11 +248,12 @@ public class GameManager : MonoBehaviour
     // Clean up units that are destroyed
     public void RemoveUnit(Unit unit)
     {
-        if (playerUnits.Contains(unit))
-            playerUnits.Remove(unit);
-        
-        if (enemyUnits.Contains(unit))
-            enemyUnits.Remove(unit);
+        if (unit is Player playerUnit)
+            playerUnits.Remove(playerUnit);
+        else if (unit is Enemy enemyUnit)
+            enemyUnits.Remove(enemyUnit);
+        else if (genericUnits.Contains(unit))
+            genericUnits.Remove(unit);
         
         // Check win conditions
         if (playerUnits.Count == 0)
@@ -270,11 +283,21 @@ public class GameManager : MonoBehaviour
             GameObject unitObj = Instantiate(playerUnitPrefab, startTile.transform.position, Quaternion.identity);
             unitObj.name = "PlayerUnit";
             
-            Unit unit = unitObj.GetComponent<Unit>();
-            if (unit != null)
+            Player playerUnit = unitObj.GetComponent<Player>();
+            if (playerUnit != null)
             {
-                playerUnits.Add(unit);
-                selectedUnit = unit; // This is the active unit for pathfinding
+                playerUnits.Add(playerUnit);
+                selectedUnit = playerUnit; // This is the active unit for pathfinding
+            }
+            else
+            {
+                // Fall back to using Unit if Player component isn't found
+                Unit unit = unitObj.GetComponent<Unit>();
+                if (unit != null)
+                {
+                    genericUnits.Add(unit);
+                    selectedUnit = unit;
+                }
             }
         }
     }
@@ -334,9 +357,18 @@ public class GameManager : MonoBehaviour
             GameObject unitObj = Instantiate(enemyUnitPrefab, placementTiles[i].transform.position, Quaternion.identity);
             unitObj.name = $"EnemyUnit_{i}";
             
-            Unit unit = unitObj.GetComponent<Unit>();
-            if (unit != null)
-                enemyUnits.Add(unit);
+            Enemy enemyUnit = unitObj.GetComponent<Enemy>();
+            if (enemyUnit != null)
+            {
+                enemyUnits.Add(enemyUnit);
+            }
+            else
+            {
+                // Fall back to using Unit if Enemy component isn't found
+                Unit unit = unitObj.GetComponent<Unit>();
+                if (unit != null)
+                    genericUnits.Add(unit);
+            }
         }
     }
     #endregion

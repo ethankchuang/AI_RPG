@@ -8,34 +8,39 @@ public class Unit : MonoBehaviour
     public static bool IsAnyUnitMoving = false;
     
     [Header("Unit Properties")]
-    public string unitName = "Unit";
-    public int movementPoints = 3;
-    public int attackRange = 1;
-    public int attackDamage = 1;
-    public int maxHealth = 5;
+    public int movementPoints;
+    public int attackDamage;
+    public int maxHealth;
+    public int speed;
     
     [Header("Visuals")]
     public SpriteRenderer spriteRenderer;
     
+    /*
+    [Header("Health Bar")]
+    public bool showHealthBar = true;
+    public GameObject healthBarPrefab;
+    protected HealthBarController healthBar;
+    */
+    
     [Header("Movement")]
-    public float moveSpeed = 2f;
-    public float tileStopDelay = 0.2f;
+    [HideInInspector] public float moveSpeed = 10f;
+    [HideInInspector] public float tileStopDelay = 0.2f;
     
     // Current state
-    public int currentHealth;
-    public bool hasMoved = false;
-    public int remainingMovementPoints;
-    public bool hasAttacked = false;
-    private bool isMoving = false;
-    public bool isInMoveMode = false;
+    [HideInInspector] public int currentActionValue = 0;
+    [HideInInspector] public int currentHealth;
+    [HideInInspector] public bool hasMoved = false;
+    [HideInInspector] public int remainingMovementPoints;
+    [HideInInspector] public bool hasAttacked = false;
     
     // References
-    private HexTile currentTile;
-    private List<HexTile> currentPath = new List<HexTile>();
-    private HexGridManager gridManager;
-    private GameManager gameManager;
+    protected HexTile currentTile;
+    protected List<HexTile> currentPath = new List<HexTile>();
+    protected HexGridManager gridManager;
+    protected GameManager gameManager;
     
-    private void Awake()
+    protected virtual void Awake()
     {
         // Initialize components and state
         if (spriteRenderer == null)
@@ -50,41 +55,59 @@ public class Unit : MonoBehaviour
         // Find manager references
         gridManager = FindObjectOfType<HexGridManager>();
         gameManager = GameManager.Instance;
-        
-        // Auto-register if this is a player unit
-        RegisterWithManagers();
     }
     
-    private void Start()
+    public virtual void Start()
     {
         UpdateCurrentTile();
         
-        // Final check for player unit registration
-        if (gameObject.name.Contains("Player"))
-            RegisterWithManagers();
+        // Only create health bar if this unit should show it
+        // The base Unit class creates health bars by default, but Player will override this
+        /*
+        if (showHealthBar && healthBarPrefab != null && ShouldShowHealthBar())
+        {
+            CreateHealthBar();
+        }
+        */
     }
     
-    // Register this unit with managers if it's a player unit
-    private void RegisterWithManagers()
+    // Virtual method to determine if this unit should show a health bar
+    // By default, all units show a health bar, but Player will override this
+    /*
+    protected virtual bool ShouldShowHealthBar()
     {
-        if (!gameObject.name.Contains("Player"))
-            return;
-            
-        // Register with GameManager
-        if (gameManager != null && gameManager.selectedUnit == null)
+        return true;
+    }
+    
+    private void CreateHealthBar()
+    {
+        // Find the Canvas in the scene
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas == null)
         {
-            gameManager.selectedUnit = this;
+            Debug.LogWarning("No canvas found in scene for health bar!");
+            return;
         }
         
-        // Register with HexGridManager
-        if (gridManager != null && gridManager.playerUnit == null)
+        // Instantiate the health bar prefab
+        GameObject healthBarObject = Instantiate(healthBarPrefab, canvas.transform);
+        
+        // Get and initialize the health bar controller
+        healthBar = healthBarObject.GetComponent<HealthBarController>();
+        if (healthBar != null)
         {
-            gridManager.playerUnit = this;
+            healthBar.Initialize(this);
+        }
+        else
+        {
+            Debug.LogWarning($"Health bar prefab for {gameObject.name} does not have a HealthBarController component!");
+            Destroy(healthBarObject);
         }
     }
+    */
     
     // Update current tile reference based on position
-    public void UpdateCurrentTile()
+    public virtual void UpdateCurrentTile()
     {
         HexTile closestTile = FindClosestTile();
         if (closestTile != null)
@@ -121,62 +144,13 @@ public class Unit : MonoBehaviour
         return closest;
     }
     
-    // These are kept for GameManager compatibility but simplified
-    public void Select()
-    {
-        if (isInMoveMode)
-            ShowMovementRange();
-    }
+    // Base select/deselect methods (to be overridden by subclasses)
+    public virtual void Select() { }
     
-    public void Deselect()
-    {
-        HideMovementRange();
-    }
-    
-    // Toggle move mode
-    public void ToggleMoveMode()
-    {
-        isInMoveMode = !isInMoveMode;
-        
-        if (isInMoveMode && remainingMovementPoints > 0)
-        {
-            ShowMovementRange();
-        }
-        else
-        {
-            HideMovementRange();
-        }
-    }
-    
-    // Show tiles within movement range
-    public void ShowMovementRange()
-    {
-        if (currentTile == null || remainingMovementPoints <= 0)
-            return;
-            
-        List<HexTile> tilesInRange = GetTilesInRange(currentTile, remainingMovementPoints);
-        
-        // First reset all tiles
-        foreach (HexTile tile in FindObjectsOfType<HexTile>())
-            tile.ResetColor();
-            
-        // Then highlight tiles in range    
-        foreach (HexTile tile in tilesInRange)
-        {
-            if (tile.isWalkable)
-                tile.SetAsPathTile(true, true);
-        }
-    }
-    
-    // Hide movement range
-    private void HideMovementRange()
-    {
-        foreach (HexTile tile in FindObjectsOfType<HexTile>())
-            tile.ResetColor();
-    }
+    public virtual void Deselect() { }
     
     // Get tiles within movement range using fringe-based algorithm
-    private List<HexTile> GetTilesInRange(HexTile startTile, int range)
+    protected List<HexTile> GetTilesInRange(HexTile startTile, int range)
     {
         List<HexTile> result = new List<HexTile>();
         HashSet<HexTile> visited = new HashSet<HexTile>();
@@ -209,150 +183,70 @@ public class Unit : MonoBehaviour
         return result;
     }
     
-    // Move along a path of tiles
-    public void MoveAlongPath(List<HexTile> path)
-    {
-        // Clear existing path
-        currentPath.Clear();
-        
-        // Validate path and unit state
-        if (path == null || path.Count < 2)
-        {
-            Debug.LogError("MoveAlongPath: Invalid path (too short or null)");
-            return;
-        }
-        
-        if (isMoving || remainingMovementPoints <= 0 || !isInMoveMode)
-        {
-            Debug.LogError("MoveAlongPath: Unit is already moving, has no movement points left, or is not in move mode");
-            return;
-        }
-        
-        // First, make sure we know what tile we're on
-        UpdateCurrentTile();
-        
-        // Reset all tiles to default color
-        foreach (HexTile tile in FindObjectsOfType<HexTile>())
-        {
-            tile.ResetColor();
-        }
-        
-        // Debug the path
-        Debug.Log($"Path to follow: {path.Count} tiles");
-        for (int i = 0; i < path.Count; i++)
-        {
-            Debug.Log($"Tile {i}: {path[i].name} at {path[i].transform.position}");
-        }
-        
-        // Store the verified path
-        currentPath = new List<HexTile>(path);
-        
-        // Start the movement coroutine
-        StartCoroutine(MoveAlongPathCoroutine());
-    }
-    
-    // Coroutine to handle smooth movement from tile to tile
-    private IEnumerator MoveAlongPathCoroutine()
-    {
-        // Set flags
-        isMoving = true;
-        IsAnyUnitMoving = true;
-        
-        // Skip the first tile which is the start position
-        for (int i = 1; i < currentPath.Count; i++)
-        {
-            // Get the next tile in the path
-            HexTile nextTile = currentPath[i];
-            Debug.Log($"Moving to tile {i}/{currentPath.Count-1}: {nextTile.name}");
-            
-            // Highlight the destination tile
-            foreach (HexTile tile in FindObjectsOfType<HexTile>())
-            {
-                tile.ResetColor();
-            }
-            nextTile.SetAsPathTile(true, true);
-            
-            // Calculate positions
-            Vector3 startPos = transform.position;
-            Vector3 targetPos = nextTile.transform.position;
-            
-            // Move at a fixed speed for consistency
-            float distance = Vector3.Distance(startPos, targetPos);
-            float actualMoveTime = distance / moveSpeed;
-            float elapsed = 0f;
-            
-            // Lerp to the next position
-            while (elapsed < actualMoveTime)
-            {
-                float t = elapsed / actualMoveTime;
-                transform.position = Vector3.Lerp(startPos, targetPos, t);
-                elapsed += Time.deltaTime;
-                yield return null;
-            }
-            
-            // Ensure we arrived exactly at the destination
-            transform.position = targetPos;
-            
-            // Update current tile
-            currentTile = nextTile;
-            
-            // Pause at each tile for clarity
-            yield return new WaitForSeconds(tileStopDelay);
-        }
-        
-        // Clean up
-        isMoving = false;
-        
-        // Reduce remaining movement points by the number of tiles moved
-        // (excluding the starting tile)
-        int tilesTraversed = currentPath.Count - 1;
-        remainingMovementPoints -= tilesTraversed;
-        if (remainingMovementPoints <= 0)
-        {
-            remainingMovementPoints = 0;
-            hasMoved = true;
-        }
-        
-        IsAnyUnitMoving = false;
-        
-        // Show updated movement range if we still have points left
-        if (isInMoveMode && remainingMovementPoints > 0)
-        {
-            ShowMovementRange();
-        }
-        else
-        {
-            // Reset all tile colors
-            foreach (HexTile tile in FindObjectsOfType<HexTile>())
-            {
-                tile.ResetColor();
-            }
-        }
-        
-        Debug.Log($"Movement complete. Remaining movement points: {remainingMovementPoints}");
-    }
+    // Base move along path method (to be overridden by subclasses)
+    public virtual void MoveAlongPath(List<HexTile> path) { }
     
     // Reset unit for a new turn
-    public void ResetForNewTurn()
+    public virtual void ResetForNewTurn()
     {
         hasMoved = false;
         hasAttacked = false;
         remainingMovementPoints = movementPoints;
-        isInMoveMode = false;
     }
     
     // Take damage
-    public void TakeDamage(int amount)
+    public virtual void TakeDamage(int amount)
     {
         currentHealth -= amount;
         
+        // Visual feedback
+        StartCoroutine(FlashSprite(Color.red, 0.2f));
+        
         if (currentHealth <= 0)
+        {
+            currentHealth = 0;
             Die();
+        }
+    }
+    
+    // Visual feedback for damage
+    protected IEnumerator FlashSprite(Color flashColor, float duration)
+    {
+        if (spriteRenderer == null)
+            yield break;
+            
+        Color originalColor = spriteRenderer.color;
+        spriteRenderer.color = flashColor;
+        
+        yield return new WaitForSeconds(duration);
+        
+        spriteRenderer.color = originalColor;
+    }
+    
+    // Heal the unit
+    public virtual void Heal(int amount)
+    {
+        currentHealth += amount;
+        
+        // Cap at max health
+        if (currentHealth > maxHealth)
+            currentHealth = maxHealth;
+            
+        // Visual feedback
+        StartCoroutine(FlashSprite(Color.green, 0.2f));
     }
     
     // Die
-    private void Die()
+    protected virtual void Die()
     {
+        /*
+        // Clean up health bar
+        if (healthBar != null)
+        {
+            Destroy(healthBar.gameObject);
+        }
+        */
+        
         // Animation or effect could go here
         Destroy(gameObject);
     }

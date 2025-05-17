@@ -12,7 +12,7 @@ public class HexGridManager : MonoBehaviour
     public float invalidPathDisplayTime = 1.0f;
     
     // References
-    [HideInInspector] public Unit playerUnit;
+    [HideInInspector] public Player playerUnit;
     private GameManager gameManager;
     
     // Path finding
@@ -98,26 +98,22 @@ public class HexGridManager : MonoBehaviour
         // First check GameManager reference
         if (gameManager != null && gameManager.selectedUnit != null)
         {
-            playerUnit = gameManager.selectedUnit;
-            return;
-        }
-        
-        // Search all units in scene
-        Unit[] units = FindObjectsOfType<Unit>();
-        
-        // Try to find a unit with "Player" in the name
-        foreach (Unit unit in units)
-        {
-            if (unit.gameObject.name.Contains("Player"))
+            if (gameManager.selectedUnit is Player player)
             {
-                playerUnit = unit;
+                playerUnit = player;
                 return;
             }
         }
         
-        // If none found, use the first unit if available
-        if (units.Length > 0)
-            playerUnit = units[0];
+        // Search all units in scene
+        Player[] players = FindObjectsOfType<Player>();
+        
+        // Use the first player found
+        if (players.Length > 0)
+        {
+            playerUnit = players[0];
+            return;
+        }
     }
     #endregion
     
