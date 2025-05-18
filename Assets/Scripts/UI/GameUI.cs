@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using TMPro;
+using System.Collections;
 
 public class GameUI : MonoBehaviour
 {
@@ -66,6 +67,25 @@ public class GameUI : MonoBehaviour
     
     private void Update()
     {
+        // Make sure GameManager reference is set
+        if (gameManager == null)
+        {
+            gameManager = GameManager.Instance;
+            if (gameManager == null)
+                gameManager = FindObjectOfType<GameManager>();
+        }
+        
+        // Update button interactability based on game state
+        if (gameManager != null)
+        {
+            // Only enable buttons during player turn
+            if (gameManager.CurrentState == GameState.PlayerTurn)
+            {
+                if (endTurnButton != null)
+                    endTurnButton.interactable = true;
+            }
+        }
+        
         // Update button colors based on game state
         UpdateEndTurnButtonColor();
         UpdateMoveButtonColor();
@@ -79,6 +99,7 @@ public class GameUI : MonoBehaviour
             if (playerUnit != null)
             {
                 playerUnit.TakeDamage(10);
+                ShowDamageMessage(10);
             }
         }
         
@@ -309,8 +330,11 @@ public class GameUI : MonoBehaviour
     // Update UI based on game state
     public void UpdateUI(GameState state)
     {
+        Debug.Log("UpdateUI called with state: " + state);
+        
         switch (state)
         {
+            case GameState.InitGame:
             case GameState.PlayerTurn:
                 if (endTurnButton != null)
                 {
@@ -435,5 +459,31 @@ public class GameUI : MonoBehaviour
 #else
         Application.Quit();
 #endif
+    }
+    
+    // Show damage message when player is attacked
+    public void ShowDamageMessage(int damageAmount)
+    {
+        if (healthText != null)
+        {
+            StartCoroutine(FlashDamageText(damageAmount));
+        }
+    }
+    
+    // Flash damage message
+    private IEnumerator FlashDamageText(int damageAmount)
+    {
+        string originalText = healthText.text;
+        Color originalColor = healthText.color;
+        
+        // Flash message
+        healthText.text = $"DAMAGE TAKEN: {damageAmount}!";
+        healthText.color = Color.red;
+        
+        yield return new WaitForSeconds(1.0f);
+        
+        // Restore original text and color
+        healthText.text = originalText;
+        healthText.color = originalColor;
     }
 } 

@@ -5,7 +5,6 @@ using UnityEngine;
 public class Player : Unit
 {
     // Player-specific properties
-    private bool isMoving = false;
     [HideInInspector] public bool isInMoveMode = false;
     
     // Cache for path visualization
@@ -62,17 +61,30 @@ public class Player : Unit
         {
             StartCoroutine(FlashDamage());
         }
+        
+        // Show damage amount as floating text
+        Debug.Log($"Player took {amount} damage! Health: {currentHealth}/{maxHealth}");
+        
+        // Show UI message
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.ShowDamageMessage(amount);
+        }
     }
     
     private IEnumerator FlashDamage()
     {
-        // Flash red to indicate damage
+        // Flash red multiple times to indicate damage
         Color originalColor = spriteRenderer.color;
-        spriteRenderer.color = Color.red;
         
-        yield return new WaitForSeconds(0.1f);
-        
-        spriteRenderer.color = originalColor;
+        for (int i = 0; i < 3; i++)
+        {
+            spriteRenderer.color = Color.red;
+            yield return new WaitForSeconds(0.1f);
+            spriteRenderer.color = originalColor;
+            yield return new WaitForSeconds(0.1f);
+        }
     }
     
     public void ToggleMoveMode()
@@ -102,11 +114,41 @@ public class Player : Unit
             
         // Clear previously highlighted tiles
         highlightedTiles.Clear();
+        
+        // Get reference to grid manager for checking occupied tiles
+        HexGridManager gridManager = FindObjectOfType<HexGridManager>();
             
         // Then highlight tiles in range    
         foreach (HexTile tile in tilesInRange)
         {
-            if (tile.isWalkable)
+            // Only highlight walkable and unoccupied tiles
+            bool isOccupied = false;
+            
+            if (gridManager != null)
+            {
+                isOccupied = gridManager.IsUnitOnTile(tile);
+            }
+            else
+            {
+                // Fallback to simple checking in case grid manager is null
+                foreach (Unit unit in FindObjectsOfType<Unit>())
+                {
+                    if (unit == this) continue; // Don't check against self
+                    
+                    float distance = Vector2.Distance(
+                        new Vector2(tile.transform.position.x, tile.transform.position.y),
+                        new Vector2(unit.transform.position.x, unit.transform.position.y)
+                    );
+                    
+                    if (distance < 0.5f)
+                    {
+                        isOccupied = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (tile.isWalkable && !isOccupied)
             {
                 tile.SetAsPathTile(true, true);
                 highlightedTiles.Add(tile);
@@ -209,6 +251,7 @@ public class Player : Unit
         
         // Clean up
         isMoving = false;
+        IsAnyUnitMoving = false;
         
         // Reduce remaining movement points by the number of tiles moved
         // (excluding the starting tile)
@@ -219,8 +262,6 @@ public class Player : Unit
             remainingMovementPoints = 0;
             hasMoved = true;
         }
-        
-        IsAnyUnitMoving = false;
         
         // Show updated movement range if we still have points left
         if (isInMoveMode && remainingMovementPoints > 0)

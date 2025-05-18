@@ -444,8 +444,16 @@ public class HexGridManager : MonoBehaviour
                     continue;
                 }
                 
-                // Skip already visited or unwalkable tiles
-                if (previous.ContainsKey(neighbor) || !neighbor.isWalkable)
+                // Skip already visited tiles
+                if (previous.ContainsKey(neighbor))
+                    continue;
+                
+                // Skip unwalkable tiles
+                if (!neighbor.isWalkable)
+                    continue;
+                
+                // Skip tiles that have units on them (except for the destination)
+                if (neighbor != end && IsUnitOnTile(neighbor))
                     continue;
                 
                 // Record where we came from
@@ -552,7 +560,7 @@ public class HexGridManager : MonoBehaviour
     }
     
     // Check if there's a unit on a specific tile
-    private bool IsUnitOnTile(HexTile tile)
+    public bool IsUnitOnTile(HexTile tile)
     {
         if (tile == null)
             return false;

@@ -4,6 +4,9 @@ using UnityEngine;
 
 public class Enemy : Unit
 {
+    private Coroutine movementCoroutine;
+    private float attackDelay = 0.5f;
+
     protected override void Awake()
     {
         base.Awake();
@@ -28,9 +31,402 @@ public class Enemy : Unit
         base.ResetForNewTurn();
     }
     
-    // Empty implementation that does nothing
+    // Execute AI turn logic
     public void ExecuteTurn()
     {
-        // Does nothing - AI will be implemented later
+        // Start the coroutine and store the reference so we can track if it's done
+        movementCoroutine = StartCoroutine(ExecuteTurnCoroutine());
+    }
+    
+    // Check if this enemy has finished its turn
+    public bool IsTurnComplete()
+    {
+        // If we have no coroutine or it's done, the turn is complete
+        return movementCoroutine == null || hasMoved;
+    }
+    
+    // Coroutine to handle enemy turn execution
+    private IEnumerator ExecuteTurnCoroutine()
+    {
+        // Wait a moment before moving
+        yield return new WaitForSeconds(0.5f);
+        
+        // Find the player
+        Player player = FindPlayer();
+        if (player == null)
+        {
+            Debug.LogWarning("Enemy can't find player to target");
+            yield break;
+        }
+        
+        // Get our current tile and player's tile
+        UpdateCurrentTile();
+        player.UpdateCurrentTile();
+        
+        if (currentTile == null || player.CurrentTile == null)
+        {
+            Debug.LogWarning("Enemy or player tile is null");
+            yield break;
+        }
+        
+        // Check if player is adjacent (but not on the same tile)
+        if (IsAdjacentToTile(player.CurrentTile) && currentTile != player.CurrentTile)
+        {
+            // Attack if adjacent
+            yield return StartCoroutine(AttackPlayer(player));
+        }
+        else
+        {
+            // Try to move towards player
+            yield return StartCoroutine(MoveTowardsPlayer(player));
+            
+            // After moving, check if we're now adjacent to player for attack
+            yield return new WaitForSeconds(0.2f);
+            UpdateCurrentTile();
+            
+            if (IsAdjacentToTile(player.CurrentTile) && currentTile != player.CurrentTile)
+            {
+                yield return StartCoroutine(AttackPlayer(player));
+            }
+        }
+        
+        // Mark as moved
+        hasMoved = true;
+    }
+    
+    // Find the player unit
+    private Player FindPlayer()
+    {
+        if (gameManager != null && gameManager.selectedUnit is Player player)
+            return player;
+            
+        // Fall back to finding any player in the scene
+        Player[] players = Object.FindObjectsOfType<Player>();
+        if (players.Length > 0)
+            return players[0];
+            
+        return null;
+    }
+    
+    // Check if this enemy is adjacent to a specific tile
+    private bool IsAdjacentToTile(HexTile tile)
+    {
+        if (currentTile == null || tile == null)
+            return false;
+            
+        // If the tiles are the same, they're not adjacent
+        if (currentTile == tile)
+            return false;
+            
+        // Check if the tile is in our neighbors list
+        return currentTile.neighbors != null && currentTile.neighbors.Contains(tile);
+    }
+    
+    // Move towards the player
+    private IEnumerator MoveTowardsPlayer(Player player)
+    {
+        if (currentTile == null || player.CurrentTile == null || remainingMovementPoints <= 0)
+            yield break;
+            
+        // Find a path to the player using the same pathfinding as player movement
+        HexGridManager gridManager = FindObjectOfType<HexGridManager>();
+        if (gridManager == null)
+            yield break;
+            
+        // Get path using the same algorithm as player movement
+        List<HexTile> path = CalculatePathToTarget(currentTile, player.CurrentTile);
+        
+        // If no path or just starting tile, we can't move
+        if (path.Count <= 1)
+            yield break;
+        
+        // Check each tile in the path to make sure they're not occupied
+        List<HexTile> validPath = new List<HexTile>();
+        validPath.Add(path[0]); // Always add the starting tile
+        
+        for (int i = 1; i < path.Count - 1; i++) // Skip the last tile (player's tile)
+        {
+            // Only add unoccupied tiles to the valid path
+            if (!gridManager.IsUnitOnTile(path[i]))
+            {
+                validPath.Add(path[i]);
+            }
+            else
+            {
+                // Stop at the last valid tile if we encounter an occupied tile
+                break;
+            }
+        }
+        
+        // If the valid path is just the starting tile, we can't move
+        if (validPath.Count <= 1)
+            yield break;
+            
+        // Limit path by our movement points
+        int maxMoveSteps = Mathf.Min(validPath.Count - 1, remainingMovementPoints);
+        List<HexTile> limitedPath = validPath.GetRange(0, maxMoveSteps + 1); // +1 because we include starting tile
+        
+        // Move along the path
+        yield return StartCoroutine(MoveAlongPathCoroutine(limitedPath));
+    }
+    
+    // Attack the player
+    private IEnumerator AttackPlayer(Player player)
+    {
+        // Animation delay
+        yield return new WaitForSeconds(attackDelay);
+        
+        // Flash red to indicate attack
+        if (spriteRenderer != null)
+            StartCoroutine(FlashSprite(Color.red, 0.2f));
+            
+        // Deal damage to player
+        player.TakeDamage(attackDamage);
+        
+        // Mark that we've attacked
+        hasAttacked = true;
+    }
+    
+    // Calculate a path to the target tile using BFS with distance-based sorting
+    private List<HexTile> CalculatePathToTarget(HexTile start, HexTile end)
+    {
+        if (start == null || end == null)
+            return new List<HexTile>();
+            
+        // Get grid manager for unit detection
+        HexGridManager gridManager = FindObjectOfType<HexGridManager>();
+        
+        // Use a dictionary to track distance to each tile from start
+        Dictionary<HexTile, int> distance = new Dictionary<HexTile, int>();
+        Dictionary<HexTile, HexTile> previous = new Dictionary<HexTile, HexTile>();
+        
+        // Priority queue to process closest tiles to player first
+        List<HexTile> toProcess = new List<HexTile>();
+        HashSet<HexTile> processed = new HashSet<HexTile>();
+        
+        // Initialize with start tile
+        distance[start] = 0;
+        previous[start] = null;
+        toProcess.Add(start);
+        
+        bool endFound = false;
+        
+        // Keep exploring until we find the end or explore all reachable tiles
+        while (toProcess.Count > 0 && !endFound)
+        {
+            // Sort by distance to player (not distance from start)
+            toProcess.Sort((a, b) => HexDistance(a, end).CompareTo(HexDistance(b, end)));
+            
+            // Get the tile closest to player
+            HexTile current = toProcess[0];
+            toProcess.RemoveAt(0);
+            processed.Add(current);
+            
+            // Check if we've reached the end
+            if (current == end)
+            {
+                endFound = true;
+                break;
+            }
+            
+            // Check each neighbor of the current tile
+            if (current.neighbors == null)
+                continue;
+                
+            foreach (HexTile neighbor in current.neighbors)
+            {
+                if (neighbor == null || processed.Contains(neighbor))
+                    continue;
+                    
+                // Skip unwalkable tiles
+                if (!neighbor.isWalkable)
+                    continue;
+                
+                // Skip occupied tiles (except the destination)
+                if (neighbor != end)
+                {
+                    bool isOccupied = gridManager != null ? 
+                        gridManager.IsUnitOnTile(neighbor) : 
+                        IsUnitOnTileFallback(neighbor);
+                    
+                    if (isOccupied)
+                        continue;
+                }
+                
+                // Calculate new distance - each step costs 1
+                int newDist = distance[current] + 1;
+                
+                // If we haven't visited this tile or found a shorter path
+                if (!distance.ContainsKey(neighbor) || newDist < distance[neighbor])
+                {
+                    // Update distance
+                    distance[neighbor] = newDist;
+                    previous[neighbor] = current;
+                    
+                    // Add to processing queue if not already there
+                    if (!toProcess.Contains(neighbor))
+                        toProcess.Add(neighbor);
+                }
+            }
+        }
+        
+        // If we didn't find the end tile but have explored neighbors, find the one closest to target
+        if (!endFound && processed.Count > 1)
+        {
+            HexTile bestTile = null;
+            float bestDistance = float.MaxValue;
+            
+            foreach (HexTile tile in processed)
+            {
+                if (tile == start) continue;
+                
+                float dist = HexDistance(tile, end);
+                if (dist < bestDistance)
+                {
+                    bestDistance = dist;
+                    bestTile = tile;
+                }
+            }
+            
+            if (bestTile != null)
+            {
+                end = bestTile;
+                endFound = true;
+            }
+        }
+        
+        // If path still not found, return just the start
+        if (!endFound || !previous.ContainsKey(end))
+        {
+            List<HexTile> fallbackPath = new List<HexTile>();
+            fallbackPath.Add(start);
+            return fallbackPath;
+        }
+        
+        // Reconstruct the path
+        List<HexTile> path = new List<HexTile>();
+        HexTile currentTile = end;
+        
+        // Build the path backwards from end to start
+        while (currentTile != null)
+        {
+            path.Add(currentTile);
+            currentTile = previous.ContainsKey(currentTile) ? previous[currentTile] : null;
+        }
+        
+        // Reverse to get start to end
+        path.Reverse();
+        
+        return path;
+    }
+    
+    // Calculate hex distance between two tiles (for pathfinding heuristic)
+    private float HexDistance(HexTile a, HexTile b)
+    {
+        if (a == null || b == null)
+            return float.MaxValue;
+            
+        // Use cube coordinates for accurate hex distance
+        int q1 = a.cubeCoords.q;
+        int r1 = a.cubeCoords.r;
+        int s1 = a.cubeCoords.s;
+        
+        int q2 = b.cubeCoords.q;
+        int r2 = b.cubeCoords.r;
+        int s2 = b.cubeCoords.s;
+        
+        return (Mathf.Abs(q1 - q2) + Mathf.Abs(r1 - r2) + Mathf.Abs(s1 - s2)) / 2f;
+    }
+    
+    // Check if a unit is on a specific tile
+    private bool IsUnitOnTileFallback(HexTile tile)
+    {
+        if (tile == null)
+            return false;
+            
+        foreach (Unit unit in Object.FindObjectsOfType<Unit>())
+        {
+            if (unit == this) continue; // Skip self
+            
+            float distance = Vector2.Distance(
+                new Vector2(tile.transform.position.x, tile.transform.position.y),
+                new Vector2(unit.transform.position.x, unit.transform.position.y)
+            );
+            
+            // If the unit is close enough to this tile, consider it "on" this tile
+            if (distance < 0.5f)
+                return true;
+        }
+        
+        return false;
+    }
+    
+    // Move along a path similar to player movement
+    private IEnumerator MoveAlongPathCoroutine(List<HexTile> path)
+    {
+        // Set flags
+        isMoving = true;
+        IsAnyUnitMoving = true;
+        
+        // Get grid manager for unit detection
+        HexGridManager gridManager = FindObjectOfType<HexGridManager>();
+        
+        // Skip the first tile which is the starting position
+        for (int i = 1; i < path.Count; i++)
+        {
+            // Get the next tile in the path
+            HexTile nextTile = path[i];
+            
+            // Double-check that the tile is still unoccupied before moving
+            bool isOccupied = gridManager != null ? 
+                gridManager.IsUnitOnTile(nextTile) : 
+                IsUnitOnTileFallback(nextTile);
+                
+            if (isOccupied)
+            {
+                Debug.Log($"Enemy skipping movement to occupied tile {nextTile.name}");
+                break; // Stop the path here
+            }
+            
+            // Calculate positions
+            Vector3 startPos = transform.position;
+            Vector3 targetPos = nextTile.transform.position;
+            
+            // Move at a fixed speed for consistency
+            float distance = Vector3.Distance(startPos, targetPos);
+            float actualMoveTime = distance / moveSpeed;
+            float elapsed = 0f;
+            
+            // Lerp to the next position
+            while (elapsed < actualMoveTime)
+            {
+                float t = elapsed / actualMoveTime;
+                transform.position = Vector3.Lerp(startPos, targetPos, t);
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+            
+            // Ensure we arrived exactly at the destination
+            transform.position = targetPos;
+            
+            // Update current tile
+            currentTile = nextTile;
+            
+            // Pause at each tile for clarity
+            yield return new WaitForSeconds(tileStopDelay);
+        }
+        
+        // Clean up
+        isMoving = false;
+        IsAnyUnitMoving = false;
+        
+        // Reduce remaining movement points
+        int tilesTraversed = path.Count - 1;
+        remainingMovementPoints -= tilesTraversed;
+        if (remainingMovementPoints <= 0)
+        {
+            remainingMovementPoints = 0;
+            hasMoved = true;
+        }
     }
 }

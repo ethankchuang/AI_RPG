@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System.Collections;
 
 public enum GameState
 {
@@ -86,6 +87,13 @@ public class GameManager : MonoBehaviour
     public void SetGameState(GameState newState)
     {
         currentState = newState;
+        
+        // Update UI with the new game state
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.UpdateUI(currentState);
+        }
         
         switch (currentState)
         {
@@ -197,15 +205,48 @@ public class GameManager : MonoBehaviour
     // Execute enemy turn logic
     private void ExecuteEnemyTurn()
     {
-        // Execute AI behavior for each enemy unit
+        // Execute AI behavior for each enemy unit with delays between them
+        StartCoroutine(ExecuteEnemyMovesSequentially());
+    }
+    
+    // Coroutine to execute enemy moves one after another with delays
+    private IEnumerator ExecuteEnemyMovesSequentially()
+    {
+        // Wait a short time before starting enemy moves
+        yield return new WaitForSeconds(0.5f);
+        
+        // Process each enemy one at a time
         foreach (Enemy enemy in enemyUnits)
         {
             if (enemy != null)
+            {
                 enemy.ExecuteTurn();
+                
+                // Wait for this enemy to finish moving
+                float waitTime = 5.0f; // Maximum wait time (prevents infinite waiting)
+                float elapsed = 0f;
+                
+                // Wait until the enemy has moved or time expires
+                while (!enemy.IsTurnComplete() && elapsed < waitTime)
+                {
+                    elapsed += 0.1f;
+                    yield return new WaitForSeconds(0.1f);
+                }
+                
+                // Additional delay between enemy turns
+                yield return new WaitForSeconds(0.5f);
+                
+                // Check for defeat condition after each enemy move
+                if (playerUnits.Count == 0)
+                {
+                    SetGameState(GameState.Defeat);
+                    yield break;
+                }
+            }
         }
         
-        // End enemy turn after a delay
-        Invoke(nameof(EndEnemyTurn), 1.0f);
+        // End enemy turn
+        EndEnemyTurn();
     }
     
     // End enemy turn

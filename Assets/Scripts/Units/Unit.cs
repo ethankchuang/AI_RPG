@@ -33,12 +33,16 @@ public class Unit : MonoBehaviour
     [HideInInspector] public bool hasMoved = false;
     [HideInInspector] public int remainingMovementPoints;
     [HideInInspector] public bool hasAttacked = false;
+    [HideInInspector] public bool isMoving = false;
     
     // References
     protected HexTile currentTile;
     protected List<HexTile> currentPath = new List<HexTile>();
     protected HexGridManager gridManager;
     protected GameManager gameManager;
+    
+    // Public accessor for current tile
+    public HexTile CurrentTile => currentTile;
     
     protected virtual void Awake()
     {
