@@ -21,12 +21,13 @@ public class HexTile : MonoBehaviour
     public Color defaultColor = Color.white;
     public Color invalidColor = Color.red;
     public Color pathColor = new Color(0.0f, 1f, 1f, 1f); // Cyan for valid paths
+    public Color movementRangeColor = new Color(1f, 1f, 0f, 0.7f); // Yellow for movement range
     
     // Neighbors for pathfinding
     public List<HexTile> neighbors = new List<HexTile>();
     
     // State
-    protected bool isPartOfPath = false;
+    public bool isPartOfPath = false;
     protected bool isValidPath = true;
     
     // References
@@ -102,12 +103,11 @@ public class HexTile : MonoBehaviour
         if (Unit.IsAnyUnitMoving)
             return;
         
-        // First, reset all other tiles to default color
-        foreach (HexTile tile in FindObjectsOfType<HexTile>())
-        {
-            if (tile != this)
-                tile.ResetColor();
-        }
+        // Look for player to check if we're in movement mode
+        Player player = null;
+        HexGridManager gridManager = FindObjectOfType<HexGridManager>();
+        if (gridManager != null)
+            player = gridManager.playerUnit;
         
         // Handle path visualization
         if (gridManager != null)
@@ -187,6 +187,17 @@ public class HexTile : MonoBehaviour
             spriteRenderer.color = isValid ? pathColor : invalidColor;
         else
             spriteRenderer.color = defaultColor;
+    }
+    
+    // Highlight this tile as within movement range
+    public virtual void SetAsMovementRangeTile()
+    {
+        isPartOfPath = true;
+        
+        if (spriteRenderer == null)
+            return;
+            
+        spriteRenderer.color = movementRangeColor;
     }
     
     // Reset tile color to default

@@ -8,7 +8,7 @@ public class Player : Unit
     [HideInInspector] public bool isInMoveMode = false;
     
     // Cache for path visualization
-    private List<HexTile> highlightedTiles = new List<HexTile>();
+    public List<HexTile> highlightedTiles = new List<HexTile>();
 
     public override void Start()
     {
@@ -56,12 +56,6 @@ public class Player : Unit
         // Call the base class implementation first
         base.TakeDamage(amount);
         
-        // Visual feedback for damage
-        if (spriteRenderer != null)
-        {
-            StartCoroutine(FlashDamage());
-        }
-        
         // Show damage amount as floating text
         Debug.Log($"Player took {amount} damage! Health: {currentHealth}/{maxHealth}");
         
@@ -70,20 +64,6 @@ public class Player : Unit
         if (gameUI != null)
         {
             gameUI.ShowDamageMessage(amount);
-        }
-    }
-    
-    private IEnumerator FlashDamage()
-    {
-        // Flash red multiple times to indicate damage
-        Color originalColor = spriteRenderer.color;
-        
-        for (int i = 0; i < 3; i++)
-        {
-            spriteRenderer.color = Color.red;
-            yield return new WaitForSeconds(0.1f);
-            spriteRenderer.color = originalColor;
-            yield return new WaitForSeconds(0.1f);
         }
     }
     
@@ -148,10 +128,16 @@ public class Player : Unit
                 }
             }
             
+            // Only highlight if the tile is walkable, unoccupied, and we can find a valid path to it
             if (tile.isWalkable && !isOccupied)
             {
-                tile.SetAsPathTile(true, true);
-                highlightedTiles.Add(tile);
+                // Check if we can find a valid path to this tile
+                List<HexTile> path = gridManager.CalculatePath(currentTile, tile);
+                if (path != null && path.Count > 0 && path.Count - 1 <= remainingMovementPoints)
+                {
+                    tile.SetAsMovementRangeTile();
+                    highlightedTiles.Add(tile);
+                }
             }
         }
     }
@@ -217,9 +203,6 @@ public class Player : Unit
             // Get the next tile in the path
             HexTile nextTile = currentPath[i];
             Debug.Log($"Moving to tile {i}/{currentPath.Count-1}: {nextTile.name}");
-            
-            // Highlight the destination tile
-            nextTile.SetAsPathTile(true, true);
             
             // Calculate positions
             Vector3 startPos = transform.position;

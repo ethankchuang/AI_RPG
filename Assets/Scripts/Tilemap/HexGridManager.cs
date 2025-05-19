@@ -194,10 +194,7 @@ public class HexGridManager : MonoBehaviour
         if (Unit.IsAnyUnitMoving)
             return;
         
-        // Reset all tiles to default
-        ResetAllTiles();
-        
-        // Clear any existing path
+        // Clear any existing path without resetting movement range tiles
         ClearPath();
         
         // Validate player unit state
@@ -356,7 +353,17 @@ public class HexGridManager : MonoBehaviour
     public void ClearPath()
     {
         foreach (HexTile tile in currentPath)
-            tile.ResetColor();
+        {
+            // Only reset if it's not in player's highlighted movement range
+            bool isInMovementRange = playerUnit != null && 
+                                   playerUnit.highlightedTiles != null && 
+                                   playerUnit.highlightedTiles.Contains(tile);
+            
+            if (!isInMovementRange)
+                tile.ResetColor();
+            else
+                tile.SetAsMovementRangeTile(); // Restore movement range highlight
+        }
         
         currentPath.Clear();
     }
@@ -364,8 +371,20 @@ public class HexGridManager : MonoBehaviour
     // Reset all tiles in the grid
     private void ResetAllTiles()
     {
+        if (playerUnit == null || playerUnit.highlightedTiles == null)
+        {
+            // If player is not available, reset all tiles
+            foreach (HexTile tile in GetComponentsInChildren<HexTile>())
+                tile.ResetColor();
+            return;
+        }
+        
+        // Otherwise, only reset tiles that are not part of the movement range
         foreach (HexTile tile in GetComponentsInChildren<HexTile>())
-            tile.ResetColor();
+        {
+            if (!playerUnit.highlightedTiles.Contains(tile))
+                tile.ResetColor();
+        }
     }
     
     // Coroutine to clear path after a delay
@@ -378,7 +397,7 @@ public class HexGridManager : MonoBehaviour
     
     #region Pathfinding
     // Calculate path between two tiles using fringe-based algorithm
-    private List<HexTile> CalculatePath(HexTile start, HexTile end)
+    public List<HexTile> CalculatePath(HexTile start, HexTile end)
     {
         Debug.Log($"CalculatePath: Finding path from {start?.name} to {end?.name}");
         
