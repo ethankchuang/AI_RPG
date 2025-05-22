@@ -25,7 +25,7 @@ public class HexGridManager : MonoBehaviour
         // Find references
         gameManager = GameManager.Instance;
         if (gameManager == null)
-            Debug.LogError("GameManager not found!");
+            return;
         
         // Set up grid generator if needed
         SetupGridGenerator();
@@ -46,10 +46,7 @@ public class HexGridManager : MonoBehaviour
             gridGenerator = GetComponent<HexGridGenerator>();
             
         if (gridGenerator == null)
-        {
-            Debug.LogError("No HexGridGenerator found!");
             return;
-        }
         
         // Generate grid if needed
         if (transform.childCount == 0)
@@ -202,7 +199,7 @@ public class HexGridManager : MonoBehaviour
             return;
         
         // Only show path if in move mode
-        if (!playerUnit.isInMoveMode || playerUnit.remainingMovementPoints <= 0)
+        if (!playerUnit.IsInMoveMode || playerUnit.remainingMovementPoints <= 0)
             return;
         
         // Find the current tile of the player unit
@@ -244,54 +241,36 @@ public class HexGridManager : MonoBehaviour
     // Execute movement to the target tile (when clicked)
     public void ExecuteMovementToTile(HexTile targetTile)
     {
-        Debug.Log($"ExecuteMovementToTile: Attempting to move to {targetTile.name}");
-        
         // Immediately reset ALL tiles
         ResetAllTiles();
         
         // Validate game state
         if (gameManager == null)
-        {
-            Debug.LogError("ExecuteMovementToTile: GameManager is null");
             return;
-        }
         
+        // Check if it's player turn and we have a player unit
         if (gameManager.CurrentState != GameState.PlayerTurn)
-        {
-            Debug.LogError("ExecuteMovementToTile: Not player turn");
             return;
-        }
         
         if (playerUnit == null)
-        {
-            Debug.LogError("ExecuteMovementToTile: No player unit found");
             return;
-        }
         
         // Check if player is in move mode and has movement points
-        if (!playerUnit.isInMoveMode)
-        {
-            Debug.LogError("ExecuteMovementToTile: Player is not in move mode");
+        if (!playerUnit.IsInMoveMode)
             return;
-        }
         
         if (playerUnit.remainingMovementPoints <= 0)
-        {
-            Debug.LogError("ExecuteMovementToTile: Player has no movement points left");
             return;
-        }
         
         // Skip unwalkable tiles or tiles with units
         if (!targetTile.isWalkable)
         {
-            Debug.LogError($"ExecuteMovementToTile: Target tile {targetTile.name} is not walkable");
             targetTile.FlashColor(targetTile.invalidColor, 0.3f);
             return;
         }
         
         if (IsUnitOnTile(targetTile))
         {
-            Debug.LogError($"ExecuteMovementToTile: Target tile {targetTile.name} is occupied");
             targetTile.FlashColor(targetTile.invalidColor, 0.3f);
             return;
         }
@@ -299,28 +278,17 @@ public class HexGridManager : MonoBehaviour
         // Get current tile of the player unit
         HexTile startTile = GetTileAtPosition(playerUnit.transform.position);
         if (startTile == null)
-        {
-            Debug.LogError("ExecuteMovementToTile: Could not find start tile");
             return;
-        }
         
         if (startTile == targetTile)
-        {
-            Debug.LogError("ExecuteMovementToTile: Start and target tiles are the same");
             return;
-        }
-        
-        Debug.Log($"ExecuteMovementToTile: Finding path from {startTile.name} to {targetTile.name}");
         
         // Create path from player to target using fringe-based algorithm
         List<HexTile> path = CalculatePath(startTile, targetTile);
         
-        Debug.Log($"ExecuteMovementToTile: Path calculated with {path.Count} tiles");
-        
         // Check if the path is valid
         if (path.Count < 2)
         {
-            Debug.LogError("ExecuteMovementToTile: Path too short, need at least 2 tiles");
             targetTile.FlashColor(targetTile.invalidColor, 0.3f);
             return;
         }
@@ -328,7 +296,6 @@ public class HexGridManager : MonoBehaviour
         // Check if path is within movement range
         if (path.Count - 1 > playerUnit.remainingMovementPoints)
         {
-            Debug.LogError($"ExecuteMovementToTile: Path too long ({path.Count-1} steps, {playerUnit.remainingMovementPoints} allowed)");
             // Show invalid path
             foreach (HexTile tile in path)
                 tile.SetAsPathTile(true, false);
@@ -337,8 +304,6 @@ public class HexGridManager : MonoBehaviour
             StartCoroutine(ClearPathAfterDelay(invalidPathDisplayTime));
             return;
         }
-        
-        Debug.Log("ExecuteMovementToTile: Path is valid, executing movement");
         
         // Path is valid - clear visuals and execute movement
         ClearPath();
@@ -399,18 +364,12 @@ public class HexGridManager : MonoBehaviour
     // Calculate path between two tiles using fringe-based algorithm
     public List<HexTile> CalculatePath(HexTile start, HexTile end)
     {
-        Debug.Log($"CalculatePath: Finding path from {start?.name} to {end?.name}");
-        
         if (start == null || end == null)
-        {
-            Debug.LogError("CalculatePath: Start or end tile is null");
             return new List<HexTile>();
-        }
             
         // If we can't reach the destination (it's a wall), return empty path
         if (!end.isWalkable)
         {
-            Debug.LogWarning($"CalculatePath: End tile {end.name} is not walkable");
             List<HexTile> invalidPath = new List<HexTile>();
             invalidPath.Add(start);
             return invalidPath;
@@ -419,7 +378,6 @@ public class HexGridManager : MonoBehaviour
         // If start and end are the same
         if (start == end)
         {
-            Debug.Log("CalculatePath: Start and end tiles are the same");
             List<HexTile> singleTilePath = new List<HexTile>();
             singleTilePath.Add(start);
             return singleTilePath;
@@ -448,20 +406,12 @@ public class HexGridManager : MonoBehaviour
             
             // Check each neighbor of the current tile
             if (current.neighbors == null)
-            {
-                Debug.LogError($"Tile {current.name} has null neighbors list");
                 continue;
-            }
-            
-            Debug.Log($"Tile {current.name} has {current.neighbors.Count} neighbors");
             
             foreach (HexTile neighbor in current.neighbors)
             {
                 if (neighbor == null)
-                {
-                    Debug.LogError("Found null neighbor in neighbors list");
                     continue;
-                }
                 
                 // Skip already visited tiles
                 if (previous.ContainsKey(neighbor))
@@ -484,7 +434,6 @@ public class HexGridManager : MonoBehaviour
         // If end tile wasn't reached, return just the start
         if (!previous.ContainsKey(end))
         {
-            Debug.LogWarning($"CalculatePath: No path found from {start.name} to {end.name}");
             List<HexTile> unreachablePath = new List<HexTile>();
             unreachablePath.Add(start);
             return unreachablePath;
@@ -504,7 +453,6 @@ public class HexGridManager : MonoBehaviour
         // Reverse to get start to end
         path.Reverse();
         
-        Debug.Log($"CalculatePath: Found path with {path.Count} tiles");
         return path;
     }
     
@@ -542,10 +490,7 @@ public class HexGridManager : MonoBehaviour
         HexTile[] allTiles = GetComponentsInChildren<HexTile>();
         
         if (allTiles.Length == 0)
-        {
-            Debug.LogError("GetTileAtPosition: No tiles found in the grid");
             return null;
-        }
         
         // Find the closest tile to the world position
         foreach (HexTile tile in allTiles)
@@ -562,17 +507,6 @@ public class HexGridManager : MonoBehaviour
                 closestDistance = distance;
                 closestTile = tile;
             }
-        }
-        
-        // Only consider a tile "at" this position if it's reasonably close
-        if (closestDistance > 1.0f)
-        {
-            Debug.LogWarning($"GetTileAtPosition: Closest tile is {closestDistance} units away, which may be too far");
-        }
-        
-        if (closestTile != null)
-        {
-            Debug.Log($"GetTileAtPosition: Found tile {closestTile.name} at distance {closestDistance:F2}");
         }
         
         return closestTile;
@@ -732,7 +666,6 @@ public class HexGridManager : MonoBehaviour
     // Public method to force refresh of neighbors (can be called from editor or other scripts)
     public void RefreshTileNeighbors()
     {
-        Debug.Log("Manually refreshing tile neighbors");
         SetupTileNeighbors();
     }
     

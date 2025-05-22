@@ -23,17 +23,25 @@ public class Unit : MonoBehaviour
     protected HealthBarController healthBar;
     */
     
+    [Header("Stats")]
+    public int currentHealth;
+    public int actionValue = 0; // Current action value (0-100)
+    
     [Header("Movement")]
-    [HideInInspector] public float moveSpeed = 10f;
-    [HideInInspector] public float tileStopDelay = 0.2f;
+    public int movementRange = 3;
+    [HideInInspector] public float moveSpeed = 5f;
+    [HideInInspector] public float tileStopDelay = 0.1f;
     
     // Current state
-    [HideInInspector] public int currentActionValue = 0;
-    [HideInInspector] public int currentHealth;
     [HideInInspector] public bool hasMoved = false;
-    [HideInInspector] public int remainingMovementPoints;
     [HideInInspector] public bool hasAttacked = false;
+    [HideInInspector] public bool isSelected = false;
     [HideInInspector] public bool isMoving = false;
+    [HideInInspector] protected bool isInMoveMode = false;
+    [HideInInspector] public int remainingMovementPoints = 0;
+    
+    // Public property to access isInMoveMode
+    public bool IsInMoveMode => isInMoveMode;
     
     // References
     protected HexTile currentTile;
@@ -117,7 +125,7 @@ public class Unit : MonoBehaviour
         if (closestTile != null)
         {
             currentTile = closestTile;
-            Debug.Log($"Updated current tile to {currentTile.name}");
+            //Debug.Log($"Updated current tile to {currentTile.name}");
         }
         else
         {
@@ -149,9 +157,23 @@ public class Unit : MonoBehaviour
     }
     
     // Base select/deselect methods (to be overridden by subclasses)
-    public virtual void Select() { }
+    public virtual void Select() 
+    {
+        isSelected = true;
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.color = Color.yellow;
+        }
+    }
     
-    public virtual void Deselect() { }
+    public virtual void Deselect() 
+    {
+        isSelected = false;
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.color = Color.white;
+        }
+    }
     
     // Get tiles within movement range using fringe-based algorithm
     protected List<HexTile> GetTilesInRange(HexTile startTile, int range)
@@ -253,5 +275,35 @@ public class Unit : MonoBehaviour
         
         // Animation or effect could go here
         Destroy(gameObject);
+    }
+    
+    // Action value methods
+    public virtual void IncrementActionValue()
+    {
+        actionValue += 1;
+        
+        if (actionValue >= (100 - speed))
+        {
+            actionValue = 0;
+            OnTurnStart();
+        }
+    }
+    
+    public virtual void ResetActionValue()
+    {
+        actionValue = 0;
+    }
+    
+    public virtual void OnTurnStart()
+    {
+        // Reset turn-based flags
+        hasMoved = false;
+        hasAttacked = false;
+        remainingMovementPoints = movementRange;
+        
+        // Reset movement mode
+        isInMoveMode = false;
+        if (currentTile != null)
+            currentTile.ResetColor();
     }
 } 

@@ -329,9 +329,7 @@ public class GameUI : MonoBehaviour
     
     // Update UI based on game state
     public void UpdateUI(GameState state)
-    {
-        Debug.Log("UpdateUI called with state: " + state);
-        
+    {   
         switch (state)
         {
             case GameState.InitGame:
@@ -403,7 +401,7 @@ public class GameUI : MonoBehaviour
         // Update button color based on move mode
         if (gameManager.selectedUnit is Player playerUnit)
         {
-            if (playerUnit.isInMoveMode && playerUnit.remainingMovementPoints > 0)
+            if (playerUnit.IsInMoveMode && playerUnit.remainingMovementPoints > 0)
             {
                 buttonImage.color = activeModeColor;  // Cyan when in move mode
             }

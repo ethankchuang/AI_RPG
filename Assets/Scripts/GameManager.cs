@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Collections;
+using System.Linq; // Add this for LINQ methods like Select
 
 public enum GameState
 {
@@ -29,14 +30,19 @@ public class GameManager : MonoBehaviour
     public static GameManager Instance { get; private set; }
     
     // State
-    private GameState currentState;
+    public GameState CurrentState = GameState.PlayerTurn;
     private List<Player> playerUnits = new List<Player>();
     private List<Enemy> enemyUnits = new List<Enemy>();
     private List<Unit> genericUnits = new List<Unit>(); // For any units that don't inherit from Player/Enemy
     public Unit selectedUnit;
     
+    // Turn order management
+    private List<Unit> allUnits = new List<Unit>();
+    private List<Unit> turnOrder = new List<Unit>();
+    private int currentTurnIndex = 0;
+    private Unit currentActiveUnit;
+    
     // Properties
-    public GameState CurrentState => currentState;
     #endregion
     
     #region Initialization
@@ -77,8 +83,14 @@ public class GameManager : MonoBehaviour
             );
         }
         
-        // Start the game
-        SetGameState(GameState.InitGame);
+        // Initialize the game
+        InitializeGame();
+        
+        // Find all units in the scene
+        FindAllUnits();
+        
+        // Start the first turn
+        StartNextTurn();
     }
     #endregion
     
@@ -86,16 +98,16 @@ public class GameManager : MonoBehaviour
     // Set the game state and trigger necessary actions
     public void SetGameState(GameState newState)
     {
-        currentState = newState;
+        CurrentState = newState;
         
         // Update UI with the new game state
         GameUI gameUI = FindObjectOfType<GameUI>();
         if (gameUI != null)
         {
-            gameUI.UpdateUI(currentState);
+            gameUI.UpdateUI(CurrentState);
         }
         
-        switch (currentState)
+        switch (CurrentState)
         {
             case GameState.InitGame:
                 InitializeGame();
@@ -185,7 +197,11 @@ public class GameManager : MonoBehaviour
     // End player turn (called from UI)
     public void EndPlayerTurn()
     {
-        SetGameState(GameState.EnemyTurn);
+        if (CurrentState == GameState.PlayerTurn)
+        {
+            SetGameState(GameState.EnemyTurn);
+            StartNextTurn();
+        }
     }
     
     // Start enemy turn
@@ -199,18 +215,11 @@ public class GameManager : MonoBehaviour
         }
         
         // Execute AI moves with small delay
-        Invoke(nameof(ExecuteEnemyTurn), 0.5f);
+        StartCoroutine(ExecuteEnemyTurn());
     }
     
     // Execute enemy turn logic
-    private void ExecuteEnemyTurn()
-    {
-        // Execute AI behavior for each enemy unit with delays between them
-        StartCoroutine(ExecuteEnemyMovesSequentially());
-    }
-    
-    // Coroutine to execute enemy moves one after another with delays
-    private IEnumerator ExecuteEnemyMovesSequentially()
+    private IEnumerator ExecuteEnemyTurn()
     {
         // Wait a short time before starting enemy moves
         yield return new WaitForSeconds(0.5f);
@@ -245,8 +254,9 @@ public class GameManager : MonoBehaviour
             }
         }
         
-        // End enemy turn
-        EndEnemyTurn();
+        // End enemy turn and start player turn
+        SetGameState(GameState.PlayerTurn);
+        StartPlayerTurn();
     }
     
     // End enemy turn
@@ -307,12 +317,24 @@ public class GameManager : MonoBehaviour
     private void PlaceInitialUnits(bool isPlayer)
     {
         if (isPlayer)
-            PlacePlayerUnit();
+        {
+            // Place player units
+            for (int i = 0; i < playerUnitsCount; i++)
+            {
+                PlacePlayerUnit();
+            }
+        }
         else
-            PlaceEnemyUnits();
+        {
+            // Place enemy units
+            for (int i = 0; i < enemyUnitsCount; i++)
+            {
+                PlaceEnemyUnit();
+            }
+        }
     }
     
-    // Place the player unit
+    // Place a single player unit
     private void PlacePlayerUnit()
     {
         // Find a good starting position (center bottom of grid)
@@ -322,13 +344,14 @@ public class GameManager : MonoBehaviour
         if (startTile != null && playerUnitPrefab != null)
         {
             GameObject unitObj = Instantiate(playerUnitPrefab, startTile.transform.position, Quaternion.identity);
-            unitObj.name = "PlayerUnit";
+            unitObj.name = $"PlayerUnit_{playerUnits.Count}";
             
             Player playerUnit = unitObj.GetComponent<Player>();
             if (playerUnit != null)
             {
                 playerUnits.Add(playerUnit);
-                selectedUnit = playerUnit; // This is the active unit for pathfinding
+                if (selectedUnit == null)
+                    selectedUnit = playerUnit; // This is the active unit for pathfinding
             }
             else
             {
@@ -337,8 +360,55 @@ public class GameManager : MonoBehaviour
                 if (unit != null)
                 {
                     genericUnits.Add(unit);
-                    selectedUnit = unit;
+                    if (selectedUnit == null)
+                        selectedUnit = unit;
                 }
+            }
+        }
+    }
+    
+    // Place a single enemy unit
+    private void PlaceEnemyUnit()
+    {
+        if (enemyUnitPrefab == null)
+            return;
+            
+        // Get eligible tiles for enemy placement (top of grid)
+        List<HexTile> placementTiles = new List<HexTile>();
+        foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
+        {
+            if (tile.row >= gridGenerator.gridHeight - 2 && tile.isWalkable)
+                placementTiles.Add(tile);
+        }
+        
+        // Randomize placement
+        System.Random random = new System.Random();
+        for (int i = 0; i < placementTiles.Count; i++)
+        {
+            int j = random.Next(i, placementTiles.Count);
+            HexTile temp = placementTiles[i];
+            placementTiles[i] = placementTiles[j];
+            placementTiles[j] = temp;
+        }
+        
+        // Place enemy unit
+        if (placementTiles.Count > 0)
+        {
+            HexTile placementTile = placementTiles[0];
+            GameObject unitObj = Instantiate(enemyUnitPrefab, placementTile.transform.position, Quaternion.identity);
+            unitObj.name = $"EnemyUnit_{enemyUnits.Count}";
+            
+            Enemy enemyUnit = unitObj.GetComponent<Enemy>();
+            if (enemyUnit != null)
+            {
+                enemyUnits.Add(enemyUnit);
+            }
+            else
+            {
+                // Fall back to using Unit if Enemy component isn't found
+                Unit unit = unitObj.GetComponent<Unit>();
+                if (unit != null)
+                    genericUnits.Add(unit);
             }
         }
     }
@@ -366,65 +436,155 @@ public class GameManager : MonoBehaviour
         
         return null;
     }
-    
-    // Place enemy units
-    private void PlaceEnemyUnits()
-    {
-        if (enemyUnitPrefab == null)
-            return;
-        
-        // Get eligible tiles for enemy placement (top of grid)
-        List<HexTile> placementTiles = new List<HexTile>();
-        foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
-        {
-            if (tile.row >= gridGenerator.gridHeight - 2 && tile.isWalkable)
-                placementTiles.Add(tile);
-        }
-        
-        // Randomize placement
-        System.Random random = new System.Random();
-        for (int i = 0; i < placementTiles.Count; i++)
-        {
-            int j = random.Next(i, placementTiles.Count);
-            HexTile temp = placementTiles[i];
-            placementTiles[i] = placementTiles[j];
-            placementTiles[j] = temp;
-        }
-        
-        // Place enemy units
-        int unitsToPlace = Mathf.Min(enemyUnitsCount, placementTiles.Count);
-        for (int i = 0; i < unitsToPlace; i++)
-        {
-            GameObject unitObj = Instantiate(enemyUnitPrefab, placementTiles[i].transform.position, Quaternion.identity);
-            unitObj.name = $"EnemyUnit_{i}";
-            
-            Enemy enemyUnit = unitObj.GetComponent<Enemy>();
-            if (enemyUnit != null)
-            {
-                enemyUnits.Add(enemyUnit);
-            }
-            else
-            {
-                // Fall back to using Unit if Enemy component isn't found
-                Unit unit = unitObj.GetComponent<Unit>();
-                if (unit != null)
-                    genericUnits.Add(unit);
-            }
-        }
-    }
     #endregion
     
     #region Game End States
     // Handle victory
     private void HandleVictory()
     {
-        Debug.Log("Victory!");
     }
     
     // Handle defeat
     private void HandleDefeat()
     {
-        Debug.Log("Defeat!");
     }
     #endregion
+    
+    private void FindAllUnits()
+    {
+        allUnits.Clear();
+        allUnits.AddRange(FindObjectsOfType<Unit>());
+        
+        // Calculate turn order based on speed
+        CalculateTurnOrder();
+    }
+    
+    private void CalculateTurnOrder()
+    {
+        turnOrder.Clear();
+        
+        // Create a list of units with their increment thresholds
+        var unitThresholds = new List<(Unit unit, int threshold)>();
+        
+        foreach (Unit unit in allUnits)
+        {
+            // Calculate how many increments this unit needs for a turn
+            // Higher speed means lower threshold (goes more often)
+            int threshold = 100 / unit.speed;
+            unitThresholds.Add((unit, threshold));
+        }
+        
+        // Sort by threshold (ascending) to get fastest units first
+        unitThresholds.Sort((a, b) => a.threshold.CompareTo(b.threshold));
+        
+        // Calculate the least common multiple of all thresholds
+        int lcm = CalculateLCM(unitThresholds.Select(x => x.threshold).ToList());
+        
+        // Create the turn order sequence
+        for (int increment = 1; increment <= lcm; increment++)
+        {
+            foreach (var (unit, threshold) in unitThresholds)
+            {
+                // If this increment is a multiple of the unit's threshold, add them to the sequence
+                if (increment % threshold == 0)
+                {
+                    turnOrder.Add(unit);
+                }
+            }
+        }
+        
+        currentTurnIndex = 0;
+    }
+    
+    private int CalculateLCM(List<int> numbers)
+    {
+        if (numbers.Count == 0) return 1;
+        
+        int lcm = numbers[0];
+        for (int i = 1; i < numbers.Count; i++)
+        {
+            lcm = CalculateLCM(lcm, numbers[i]);
+        }
+        return lcm;
+    }
+    
+    private int CalculateLCM(int a, int b)
+    {
+        return Mathf.Abs(a * b) / CalculateGCD(a, b);
+    }
+    
+    private int CalculateGCD(int a, int b)
+    {
+        while (b != 0)
+        {
+            int temp = b;
+            b = a % b;
+            a = temp;
+        }
+        return a;
+    }
+    
+    private void StartNextTurn()
+    {
+        if (turnOrder.Count == 0)
+            return;
+        
+        // Get the next unit in the turn order
+        currentActiveUnit = turnOrder[currentTurnIndex];
+        
+        // Move to next unit in the list
+        currentTurnIndex = (currentTurnIndex + 1) % turnOrder.Count;
+        
+        // Update game state based on unit type
+        if (currentActiveUnit is Player)
+        {
+            CurrentState = GameState.PlayerTurn;
+            selectedUnit = currentActiveUnit;
+        }
+        else
+        {
+            CurrentState = GameState.EnemyTurn;
+            selectedUnit = null;
+        }
+        
+        // Start the unit's turn
+        currentActiveUnit.OnTurnStart();
+        
+        // Update UI
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.UpdateUI(CurrentState);
+        }
+        
+        // Update camera target
+        if (cameraFollow != null)
+        {
+            cameraFollow.SetTarget(currentActiveUnit);
+        }
+    }
+    
+    public void EndCurrentTurn()
+    {
+        if (currentActiveUnit != null)
+        {
+            // Start the next turn
+            StartNextTurn();
+        }
+    }
+    
+    public void OnUnitDeath(Unit unit)
+    {
+        // Remove the unit from both lists
+        allUnits.Remove(unit);
+        
+        // Recalculate turn order
+        CalculateTurnOrder();
+        
+        // If it was the current active unit, end the turn
+        if (unit == currentActiveUnit)
+        {
+            EndCurrentTurn();
+        }
+    }
 } 

@@ -4,9 +4,6 @@ using UnityEngine;
 
 public class Player : Unit
 {
-    // Player-specific properties
-    [HideInInspector] public bool isInMoveMode = false;
-    
     // Cache for path visualization
     public List<HexTile> highlightedTiles = new List<HexTile>();
 
@@ -55,9 +52,6 @@ public class Player : Unit
     {
         // Call the base class implementation first
         base.TakeDamage(amount);
-        
-        // Show damage amount as floating text
-        Debug.Log($"Player took {amount} damage! Health: {currentHealth}/{maxHealth}");
         
         // Show UI message
         GameUI gameUI = FindObjectOfType<GameUI>();
@@ -178,11 +172,11 @@ public class Player : Unit
         HideMovementRange();
         
         // Debug the path
-        Debug.Log($"Path to follow: {path.Count} tiles");
-        for (int i = 0; i < path.Count; i++)
-        {
-            Debug.Log($"Tile {i}: {path[i].name} at {path[i].transform.position}");
-        }
+        //Debug.Log($"Path to follow: {path.Count} tiles");
+        //for (int i = 0; i < path.Count; i++)
+        //{
+        //    Debug.Log($"Tile {i}: {path[i].name} at {path[i].transform.position}");
+        //}
         
         // Store the verified path
         currentPath = new List<HexTile>(path);
@@ -202,7 +196,7 @@ public class Player : Unit
         {
             // Get the next tile in the path
             HexTile nextTile = currentPath[i];
-            Debug.Log($"Moving to tile {i}/{currentPath.Count-1}: {nextTile.name}");
+            //Debug.Log($"Moving to tile {i}/{currentPath.Count-1}: {nextTile.name}");
             
             // Calculate positions
             Vector3 startPos = transform.position;
@@ -252,7 +246,7 @@ public class Player : Unit
             ShowMovementRange();
         }
         
-        Debug.Log($"Movement complete. Remaining movement points: {remainingMovementPoints}");
+        //Debug.Log($"Movement complete. Remaining movement points: {remainingMovementPoints}");
     }
     
     public override void ResetForNewTurn()
