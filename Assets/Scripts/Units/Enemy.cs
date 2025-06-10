@@ -26,23 +26,31 @@ public class Enemy : Unit
     */
     
     // Called at the start of enemy turn
-    public override void ResetForNewTurn()
+    
+    public override void OnTurnEnd()
     {
-        base.ResetForNewTurn();
+        base.OnTurnEnd();
     }
     
     // Execute AI turn logic
     public void ExecuteTurn()
     {
+        // Reset movement state
+        hasMoved = false;
+        hasAttacked = false;
+        
         // Start the coroutine and store the reference so we can track if it's done
+        if (movementCoroutine != null)
+        {
+            StopCoroutine(movementCoroutine);
+        }
         movementCoroutine = StartCoroutine(ExecuteTurnCoroutine());
     }
     
     // Check if this enemy has finished its turn
     public bool IsTurnComplete()
     {
-        // If we have no coroutine or it's done, the turn is complete
-        return movementCoroutine == null || hasMoved;
+        return hasMoved && hasAttacked;
     }
     
     // Coroutine to handle enemy turn execution
@@ -55,7 +63,9 @@ public class Enemy : Unit
         Player player = FindPlayer();
         if (player == null)
         {
-            Debug.LogWarning("Enemy can't find player to target");
+            hasMoved = true;
+            hasAttacked = true;
+            movementCoroutine = null;
             yield break;
         }
         
@@ -65,15 +75,20 @@ public class Enemy : Unit
         
         if (currentTile == null || player.CurrentTile == null)
         {
-            Debug.LogWarning("Enemy or player tile is null");
+            hasMoved = true;
+            hasAttacked = true;
+            movementCoroutine = null;
             yield break;
         }
         
-        // Check if player is adjacent (but not on the same tile)
-        if (IsAdjacentToTile(player.CurrentTile) && currentTile != player.CurrentTile)
+        bool isAdjacent = IsAdjacentToTile(player.CurrentTile) && currentTile != player.CurrentTile;
+        
+        if (isAdjacent)
         {
             // Attack if adjacent
             yield return StartCoroutine(AttackPlayer(player));
+            hasMoved = true;
+            hasAttacked = true;
         }
         else
         {
@@ -88,16 +103,20 @@ public class Enemy : Unit
             {
                 yield return StartCoroutine(AttackPlayer(player));
             }
+            
+            // Always mark both as true to end the turn
+            hasMoved = true;
+            hasAttacked = true;
         }
         
-        // Mark as moved
-        hasMoved = true;
+        movementCoroutine = null;
     }
     
     // Find the player unit
     private Player FindPlayer()
     {
-        if (gameManager != null && gameManager.selectedUnit is Player player)
+        // First check active unit
+        if (Unit.ActiveUnit is Player player)
             return player;
             
         // Fall back to finding any player in the scene
@@ -126,19 +145,27 @@ public class Enemy : Unit
     private IEnumerator MoveTowardsPlayer(Player player)
     {
         if (currentTile == null || player.CurrentTile == null || remainingMovementPoints <= 0)
+        {
+            Debug.Log($"{gameObject.name}: Cannot move - MP: {remainingMovementPoints}");
             yield break;
+        }
             
         // Find a path to the player using the same pathfinding as player movement
         HexGridManager gridManager = FindObjectOfType<HexGridManager>();
         if (gridManager == null)
+        {
             yield break;
+        }
             
         // Get path using the same algorithm as player movement
         List<HexTile> path = CalculatePathToTarget(currentTile, player.CurrentTile);
         
         // If no path or just starting tile, we can't move
         if (path.Count <= 1)
+        {
+            Debug.Log($"{gameObject.name}: No valid path found");
             yield break;
+        }
         
         // Check each tile in the path to make sure they're not occupied
         List<HexTile> validPath = new List<HexTile>();
@@ -153,19 +180,22 @@ public class Enemy : Unit
             }
             else
             {
-                // Stop at the last valid tile if we encounter an occupied tile
                 break;
             }
         }
         
         // If the valid path is just the starting tile, we can't move
         if (validPath.Count <= 1)
+        {
+            Debug.Log($"{gameObject.name}: No valid unoccupied tiles in path");
             yield break;
+        }
             
         // Limit path by our movement points
         int maxMoveSteps = Mathf.Min(validPath.Count - 1, remainingMovementPoints);
         List<HexTile> limitedPath = validPath.GetRange(0, maxMoveSteps + 1); // +1 because we include starting tile
         
+        Debug.Log($"{gameObject.name}: Moving along path of length {limitedPath.Count}");
         // Move along the path
         yield return StartCoroutine(MoveAlongPathCoroutine(limitedPath));
     }
@@ -364,6 +394,14 @@ public class Enemy : Unit
     // Move along a path similar to player movement
     private IEnumerator MoveAlongPathCoroutine(List<HexTile> path)
     {
+        // If path is empty or only contains start tile, mark as moved and return
+        if (path == null || path.Count <= 1)
+        {
+            Debug.Log($"{gameObject.name}: No valid path to move along");
+            hasMoved = true;
+            yield break;
+        }
+
         // Set flags
         isMoving = true;
         IsAnyUnitMoving = true;
@@ -384,7 +422,7 @@ public class Enemy : Unit
                 
             if (isOccupied)
             {
-                Debug.Log($"Enemy skipping movement to occupied tile {nextTile.name}");
+                Debug.Log($"{gameObject.name}: Tile {i} is occupied, stopping movement");
                 break; // Stop the path here
             }
             
@@ -396,6 +434,8 @@ public class Enemy : Unit
             float distance = Vector3.Distance(startPos, targetPos);
             float actualMoveTime = distance / moveSpeed;
             float elapsed = 0f;
+            
+            Debug.Log($"{gameObject.name}: Moving to tile {i} of {path.Count}");
             
             // Lerp to the next position
             while (elapsed < actualMoveTime)
@@ -426,7 +466,11 @@ public class Enemy : Unit
         if (remainingMovementPoints <= 0)
         {
             remainingMovementPoints = 0;
-            hasMoved = true;
         }
+        
+        // Always mark as moved after attempting movement
+        hasMoved = true;
+        
+        Debug.Log($"{gameObject.name}: Movement complete. Remaining MP: {remainingMovementPoints}");
     }
 }

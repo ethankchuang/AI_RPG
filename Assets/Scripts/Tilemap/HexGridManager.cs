@@ -92,14 +92,11 @@ public class HexGridManager : MonoBehaviour
     // Find the player unit
     private void FindPlayerUnit()
     {
-        // First check GameManager reference
-        if (gameManager != null && gameManager.selectedUnit != null)
+        // First check active unit
+        if (Unit.ActiveUnit is Player player)
         {
-            if (gameManager.selectedUnit is Player player)
-            {
-                playerUnit = player;
-                return;
-            }
+            playerUnit = player;
+            return;
         }
         
         // Search all units in scene
@@ -308,10 +305,6 @@ public class HexGridManager : MonoBehaviour
         // Path is valid - clear visuals and execute movement
         ClearPath();
         playerUnit.MoveAlongPath(path);
-        
-        // Update camera target
-        if (gameManager.cameraFollow != null)
-            gameManager.cameraFollow.SetTarget(playerUnit);
     }
     
     // Clear the current path

@@ -34,16 +34,24 @@ public class GameManager : MonoBehaviour
     private List<Player> playerUnits = new List<Player>();
     private List<Enemy> enemyUnits = new List<Enemy>();
     private List<Unit> genericUnits = new List<Unit>(); // For any units that don't inherit from Player/Enemy
-    public Unit selectedUnit;
     
     // Turn order management
     private List<Unit> allUnits = new List<Unit>();
-    private List<Unit> turnOrder = new List<Unit>();
-    private int currentTurnIndex = 0;
     private Unit currentActiveUnit;
     
     // Properties
     #endregion
+    
+    // Public method to get all units
+    public List<Unit> GetAllUnits()
+    {
+        if (allUnits == null || allUnits.Count == 0)
+        {
+            Debug.LogWarning("Units list is empty, finding all units...");
+            FindAllUnits();
+        }
+        return new List<Unit>(allUnits);
+    }
     
     #region Initialization
     private void Awake()
@@ -83,13 +91,13 @@ public class GameManager : MonoBehaviour
             );
         }
         
-        // Initialize the game
-        InitializeGame();
+        // Start in InitGame state
+        SetGameState(GameState.InitGame);
         
         // Find all units in the scene
         FindAllUnits();
         
-        // Start the first turn
+        // Start the first turn using action value system
         StartNextTurn();
     }
     #endregion
@@ -98,6 +106,10 @@ public class GameManager : MonoBehaviour
     // Set the game state and trigger necessary actions
     public void SetGameState(GameState newState)
     {
+        if (CurrentState != newState)
+        {
+            Debug.Log($"GameManager: State change: {CurrentState} -> {newState}");
+        }
         CurrentState = newState;
         
         // Update UI with the new game state
@@ -105,6 +117,10 @@ public class GameManager : MonoBehaviour
         if (gameUI != null)
         {
             gameUI.UpdateUI(CurrentState);
+        }
+        else
+        {
+            Debug.LogError("GameManager: Could not find GameUI component!");
         }
         
         switch (CurrentState)
@@ -118,7 +134,7 @@ public class GameManager : MonoBehaviour
                 break;
                 
             case GameState.EnemyTurn:
-                StartEnemyTurn();
+                // Enemy turns are now handled directly in StartNextTurn()
                 break;
                 
             case GameState.Victory:
@@ -149,9 +165,6 @@ public class GameManager : MonoBehaviour
         
         // Set up camera and references
         SetupInitialReferences();
-        
-        // Start player turn
-        SetGameState(GameState.PlayerTurn);
     }
     
     // Setup initial references including camera and grid manager
@@ -160,18 +173,11 @@ public class GameManager : MonoBehaviour
         // Make sure we have a player unit
         if (playerUnits.Count > 0)
         {
-            selectedUnit = playerUnits[0];
+            Unit.ActiveUnit = playerUnits[0];
             
             // Share the reference with grid manager
             if (gridManager != null)
                 gridManager.playerUnit = playerUnits[0];
-            
-            // Focus camera on player unit
-            if (cameraFollow != null)
-            {
-                cameraFollow.SetTarget(playerUnits[0]);
-                cameraFollow.CenterOnTarget();
-            }
         }
     }
     #endregion
@@ -191,85 +197,31 @@ public class GameManager : MonoBehaviour
         if (playerUnits.Count > 0)
             SelectUnit(playerUnits[0]);
         else
-            selectedUnit = null;
+            Unit.ActiveUnit = null;
     }
     
     // End player turn (called from UI)
     public void EndPlayerTurn()
     {
-        if (CurrentState == GameState.PlayerTurn)
+        if (CurrentState != GameState.PlayerTurn)
         {
-            SetGameState(GameState.EnemyTurn);
-            StartNextTurn();
+            Debug.LogWarning($"Cannot end player turn in state {CurrentState}");
+            return;
         }
+
+        // Find the player unit
+        Player player = FindObjectOfType<Player>();
+        if (player == null)
+        {
+            Debug.LogWarning("No player found!");
+            return;
+        }
+
+        // End the player's turn (StartNextTurn will be called from the player's coroutine)
+        player.OnTurnEnd();
     }
     
-    // Start enemy turn
-    private void StartEnemyTurn()
-    {
-        // Reset all enemy units
-        foreach (Enemy unit in enemyUnits)
-        {
-            if (unit != null)
-                unit.ResetForNewTurn();
-        }
-        
-        // Execute AI moves with small delay
-        StartCoroutine(ExecuteEnemyTurn());
-    }
-    
-    // Execute enemy turn logic
-    private IEnumerator ExecuteEnemyTurn()
-    {
-        // Wait a short time before starting enemy moves
-        yield return new WaitForSeconds(0.5f);
-        
-        // Process each enemy one at a time
-        foreach (Enemy enemy in enemyUnits)
-        {
-            if (enemy != null)
-            {
-                enemy.ExecuteTurn();
-                
-                // Wait for this enemy to finish moving
-                float waitTime = 5.0f; // Maximum wait time (prevents infinite waiting)
-                float elapsed = 0f;
-                
-                // Wait until the enemy has moved or time expires
-                while (!enemy.IsTurnComplete() && elapsed < waitTime)
-                {
-                    elapsed += 0.1f;
-                    yield return new WaitForSeconds(0.1f);
-                }
-                
-                // Additional delay between enemy turns
-                yield return new WaitForSeconds(0.5f);
-                
-                // Check for defeat condition after each enemy move
-                if (playerUnits.Count == 0)
-                {
-                    SetGameState(GameState.Defeat);
-                    yield break;
-                }
-            }
-        }
-        
-        // End enemy turn and start player turn
-        SetGameState(GameState.PlayerTurn);
-        StartPlayerTurn();
-    }
-    
-    // End enemy turn
-    private void EndEnemyTurn()
-    {
-        // Check win/lose conditions
-        if (playerUnits.Count == 0)
-            SetGameState(GameState.Defeat);
-        else if (enemyUnits.Count == 0)
-            SetGameState(GameState.Victory);
-        else
-            SetGameState(GameState.PlayerTurn);
-    }
+
     #endregion
     
     #region Unit Management
@@ -277,23 +229,19 @@ public class GameManager : MonoBehaviour
     public void SelectUnit(Unit unit)
     {
         // No need to do anything if it's the same unit
-        if (selectedUnit == unit)
+        if (Unit.ActiveUnit == unit)
             return;
             
         // Clear previous unit's movement range
-        if (selectedUnit != null)
-            selectedUnit.Deselect();
+        if (Unit.ActiveUnit != null)
+            Unit.ActiveUnit.Deselect();
         
         // Update active unit
-        selectedUnit = unit;
+        Unit.ActiveUnit = unit;
         
         // If it's a player unit, update grid manager reference
         if (unit is Player playerUnit && gridManager != null)
             gridManager.playerUnit = playerUnit;
-        
-        // Update camera to follow the unit
-        if (selectedUnit != null && cameraFollow != null)
-            cameraFollow.SetTarget(selectedUnit);
     }
     
     // Clean up units that are destroyed
@@ -350,8 +298,8 @@ public class GameManager : MonoBehaviour
             if (playerUnit != null)
             {
                 playerUnits.Add(playerUnit);
-                if (selectedUnit == null)
-                    selectedUnit = playerUnit; // This is the active unit for pathfinding
+                if (Unit.ActiveUnit == null)
+                    Unit.ActiveUnit = playerUnit; // This is the active unit for pathfinding
             }
             else
             {
@@ -360,8 +308,8 @@ public class GameManager : MonoBehaviour
                 if (unit != null)
                 {
                     genericUnits.Add(unit);
-                    if (selectedUnit == null)
-                        selectedUnit = unit;
+                    if (Unit.ActiveUnit == null)
+                        Unit.ActiveUnit = unit;
                 }
             }
         }
@@ -454,132 +402,159 @@ public class GameManager : MonoBehaviour
     {
         allUnits.Clear();
         allUnits.AddRange(FindObjectsOfType<Unit>());
-        
-        // Calculate turn order based on speed
-        CalculateTurnOrder();
     }
     
-    private void CalculateTurnOrder()
+    public void StartNextTurn()
     {
-        turnOrder.Clear();
+        Debug.Log("StartNextTurn: Beginning turn calculation");
         
-        // Create a list of units with their increment thresholds
-        var unitThresholds = new List<(Unit unit, int threshold)>();
+        // Make sure we have all units
+        FindAllUnits();
+        Debug.Log($"StartNextTurn: Found {allUnits.Count} units");
+        
+        // Find the minimum action value needed to reach threshold
+        int leastActionNeeded = int.MaxValue;
         
         foreach (Unit unit in allUnits)
         {
-            // Calculate how many increments this unit needs for a turn
-            // Higher speed means lower threshold (goes more often)
-            int threshold = 100 / unit.speed;
-            unitThresholds.Add((unit, threshold));
-        }
-        
-        // Sort by threshold (ascending) to get fastest units first
-        unitThresholds.Sort((a, b) => a.threshold.CompareTo(b.threshold));
-        
-        // Calculate the least common multiple of all thresholds
-        int lcm = CalculateLCM(unitThresholds.Select(x => x.threshold).ToList());
-        
-        // Create the turn order sequence
-        for (int increment = 1; increment <= lcm; increment++)
-        {
-            foreach (var (unit, threshold) in unitThresholds)
+            int threshold = 100 - unit.speed;
+            int actionNeeded = threshold - unit.actionValue;
+            
+            Debug.Log($"{unit.gameObject.name}: Action Value: {unit.actionValue}, Threshold: {threshold}, Action Needed: {actionNeeded}");
+            
+            if (actionNeeded < leastActionNeeded)
             {
-                // If this increment is a multiple of the unit's threshold, add them to the sequence
-                if (increment % threshold == 0)
-                {
-                    turnOrder.Add(unit);
-                }
+                leastActionNeeded = actionNeeded;
             }
         }
         
-        currentTurnIndex = 0;
-    }
-    
-    private int CalculateLCM(List<int> numbers)
-    {
-        if (numbers.Count == 0) return 1;
+        // Find all units that need the least action (tied units)
+        List<Unit> tiedUnits = new List<Unit>();
+        foreach (Unit unit in allUnits)
+        {
+            int threshold = 100 - unit.speed;
+            int actionNeeded = threshold - unit.actionValue;
+            
+            if (actionNeeded == leastActionNeeded)
+            {
+                tiedUnits.Add(unit);
+            }
+        }
         
-        int lcm = numbers[0];
-        for (int i = 1; i < numbers.Count; i++)
+        // Use priority to break ties
+        Unit nextUnit = null;
+        int highestPriority = int.MinValue;
+        
+        foreach (Unit unit in tiedUnits)
         {
-            lcm = CalculateLCM(lcm, numbers[i]);
+            if (unit.priority > highestPriority)
+            {
+                highestPriority = unit.priority;
+                nextUnit = unit;
+            }
         }
-        return lcm;
-    }
-    
-    private int CalculateLCM(int a, int b)
-    {
-        return Mathf.Abs(a * b) / CalculateGCD(a, b);
-    }
-    
-    private int CalculateGCD(int a, int b)
-    {
-        while (b != 0)
+        
+        if (nextUnit == null)
         {
-            int temp = b;
-            b = a % b;
-            a = temp;
-        }
-        return a;
-    }
-    
-    private void StartNextTurn()
-    {
-        if (turnOrder.Count == 0)
+            Debug.LogWarning("No units found!");
             return;
+        }
         
-        // Get the next unit in the turn order
-        currentActiveUnit = turnOrder[currentTurnIndex];
+        Debug.Log($"StartNextTurn: Selected {nextUnit.gameObject.name} as next unit (Priority: {nextUnit.priority})");
+        if (tiedUnits.Count > 1)
+        {
+            Debug.Log($"Tie-breaker used: {tiedUnits.Count} units tied, {nextUnit.gameObject.name} won with priority {nextUnit.priority}");
+        }
         
-        // Move to next unit in the list
-        currentTurnIndex = (currentTurnIndex + 1) % turnOrder.Count;
+        // Calculate how much action value to distribute to other units (only the amount this unit actually needed)
+        int nextUnitThreshold = 100 - nextUnit.speed;
+        int actionToDistribute = nextUnitThreshold - nextUnit.actionValue;
+        
+        Debug.Log($"Next Turn: {nextUnit.gameObject.name} (Speed: {nextUnit.speed}, Action Value: {nextUnit.actionValue}, Threshold: {nextUnitThreshold})");
+        Debug.Log($"Distributing {actionToDistribute} action value to other units");
+        
+        // Reset the active unit's action value to 0
+        nextUnit.actionValue = 0;
+        
+        // Distribute the action value to all other units (only the amount the active unit needed)
+        foreach (Unit unit in allUnits)
+        {
+            if (unit != nextUnit)
+            {
+                unit.actionValue += actionToDistribute;
+                Debug.Log($"{unit.gameObject.name} new action value: {unit.actionValue}");
+            }
+        }
+        
+        // Set the current active unit
+        Unit.ActiveUnit = nextUnit;
+        Debug.Log($"StartNextTurn: Set {nextUnit.gameObject.name} as ActiveUnit");
         
         // Update game state based on unit type
-        if (currentActiveUnit is Player)
+        if (nextUnit is Player)
         {
-            CurrentState = GameState.PlayerTurn;
-            selectedUnit = currentActiveUnit;
+            Debug.Log("StartNextTurn: Starting player turn");
+            SetGameState(GameState.PlayerTurn);
         }
-        else
+        else if (nextUnit is Enemy)
         {
+            Debug.Log("StartNextTurn: Starting enemy turn");
             CurrentState = GameState.EnemyTurn;
-            selectedUnit = null;
+            Enemy currentEnemy = nextUnit as Enemy;
+            currentEnemy.ExecuteTurn();
+            
+            // Start coroutine to wait for enemy turn completion
+            StartCoroutine(WaitForEnemyTurn(currentEnemy));
         }
         
-        // Start the unit's turn
-        currentActiveUnit.OnTurnStart();
+        Debug.Log("StartNextTurn: Completed");
+    }
+    
+    private IEnumerator WaitForEnemyTurn(Enemy enemy)
+    {
+        Debug.Log($"GameManager: Waiting for enemy {enemy.gameObject.name} turn to complete");
         
-        // Update UI
-        GameUI gameUI = FindObjectOfType<GameUI>();
-        if (gameUI != null)
+        // Wait for the enemy to complete their turn
+        while (!enemy.IsTurnComplete())
         {
-            gameUI.UpdateUI(CurrentState);
+            yield return null; // Wait one frame
         }
         
-        // Update camera target
-        if (cameraFollow != null)
+        // End their turn (this will clear ActiveUnit)
+        enemy.OnTurnEnd();
+        
+        // Check for defeat condition
+        if (playerUnits.Count == 0)
         {
-            cameraFollow.SetTarget(currentActiveUnit);
+            SetGameState(GameState.Defeat);
+            yield break;
         }
+        
+        // Start the next turn
+        StartNextTurn();
     }
     
     public void EndCurrentTurn()
     {
-        if (currentActiveUnit != null)
+        if (currentActiveUnit == null)
         {
-            // Start the next turn
-            StartNextTurn();
+            Debug.LogWarning("GameManager: No active unit to end turn for!");
+            return;
         }
+        
+        Debug.Log($"GameManager: Ending turn for {currentActiveUnit.gameObject.name}");
+        
+        // Clear the current active unit reference but NOT the static ActiveUnit
+        currentActiveUnit = null;
+        
+        // Start the next turn
+        StartNextTurn();
     }
     
     public void OnUnitDeath(Unit unit)
     {
-        // Remove the unit from both lists
+        // Remove the unit from the list
         allUnits.Remove(unit);
-        
-        // Recalculate turn order
-        CalculateTurnOrder();
         
         // If it was the current active unit, end the turn
         if (unit == currentActiveUnit)

@@ -9,6 +9,11 @@ public class GameUI : MonoBehaviour
     [Header("UI References")]
     public Button endTurnButton;
     public Button moveButton;
+    public CanvasGroup actionButtonsGroup; // Add this to control opacity of all action buttons
+    
+    [Header("UI Settings")]
+    public float disabledOpacity = 0.3f; // Opacity when buttons are disabled
+    public float enabledOpacity = 1.0f;  // Opacity when buttons are enabled
     
     [Header("Health Bar")]
     public Slider healthBar;             // The slider component (optional)
@@ -39,30 +44,49 @@ public class GameUI : MonoBehaviour
             eventSystem = eventSystemObj.AddComponent<EventSystem>();
             eventSystemObj.AddComponent<StandaloneInputModule>();
         }
+        
+        // Find or create CanvasGroup for action buttons
+        if (actionButtonsGroup == null)
+        {
+            // Try to find existing CanvasGroup
+            actionButtonsGroup = GetComponent<CanvasGroup>();
+            if (actionButtonsGroup == null)
+            {
+                // Create new CanvasGroup
+                actionButtonsGroup = gameObject.AddComponent<CanvasGroup>();
+            }
+        }
+        
+        // Ensure we have a CanvasGroup
+        if (actionButtonsGroup == null)
+        {
+            Debug.LogError("GameUI: Failed to create or find CanvasGroup!");
+        }
+        else
+        {
+            // Initialize CanvasGroup
+            actionButtonsGroup.alpha = 1f;
+            actionButtonsGroup.interactable = true;
+            actionButtonsGroup.blocksRaycasts = true;
+        }
     }
     
     private void Start()
     {
-        // Find game manager
+        // Find GameManager reference
         gameManager = GameManager.Instance;
         if (gameManager == null)
+        {
             gameManager = FindObjectOfType<GameManager>();
-            
-        // Set up button listeners
-        if (endTurnButton != null)
-            endTurnButton.onClick.AddListener(OnEndTurnClicked);
-            
-        if (moveButton != null)
-            moveButton.onClick.AddListener(OnMoveButtonClicked);
-            
-        // Ensure health bar is properly set up for either hierarchy structure
-        SetupHealthBarComponents();
-            
-        // Initialize health bar
-        InitializeHealthBar();
-            
-        // Update UI for initial state
-        UpdateUI(GameState.InitGame);
+        }
+        
+        if (gameManager == null)
+        {
+            Debug.LogError("GameUI: Could not find GameManager!");
+        }
+        
+        // Initialize UI state
+        UpdateUI(gameManager != null ? gameManager.CurrentState : GameState.InitGame);
     }
     
     private void Update()
@@ -75,41 +99,38 @@ public class GameUI : MonoBehaviour
                 gameManager = FindObjectOfType<GameManager>();
         }
         
-        // Update button interactability based on game state
+        // Update button interactability based on active unit
         if (gameManager != null)
         {
-            // Only enable buttons during player turn
-            if (gameManager.CurrentState == GameState.PlayerTurn)
+            // Only enable buttons if the active unit is a player
+            bool isPlayerActive = Unit.ActiveUnit is Player;
+            
+            // Update button interactability
+            if (endTurnButton != null)
+                endTurnButton.interactable = isPlayerActive;
+                
+            if (moveButton != null)
+                moveButton.interactable = isPlayerActive;
+                
+            // Update CanvasGroup alpha
+            if (actionButtonsGroup != null)
             {
-                if (endTurnButton != null)
-                    endTurnButton.interactable = true;
+                float targetAlpha = isPlayerActive ? enabledOpacity : disabledOpacity;
+                if (Mathf.Abs(actionButtonsGroup.alpha - targetAlpha) > 0.01f)
+                {
+                    actionButtonsGroup.alpha = targetAlpha;
+                    actionButtonsGroup.interactable = isPlayerActive;
+                    actionButtonsGroup.blocksRaycasts = isPlayerActive;
+                }
             }
         }
         
-        // Update button colors based on game state
+        // Update button colors based on active unit
         UpdateEndTurnButtonColor();
         UpdateMoveButtonColor();
         
         // Update health bar
         UpdateHealthBar();
-        
-        // Simple testing keys for game testing only
-        if (Input.GetKeyDown(KeyCode.T)) // Damage test
-        {
-            if (playerUnit != null)
-            {
-                playerUnit.TakeDamage(10);
-                ShowDamageMessage(10);
-            }
-        }
-        
-        if (Input.GetKeyDown(KeyCode.Y)) // Heal test
-        {
-            if (playerUnit != null)
-            {
-                playerUnit.Heal(10);
-            }
-        }
     }
     
     private void InitializeHealthBar()
@@ -129,10 +150,10 @@ public class GameUI : MonoBehaviour
     {
         if (playerUnit != null) return;
         
-        // Try to get player from game manager
-        if (gameManager != null && gameManager.selectedUnit is Player)
+        // Try to get player from active unit
+        if (Unit.ActiveUnit is Player activePlayer)
         {
-            playerUnit = gameManager.selectedUnit as Player;
+            playerUnit = activePlayer;
             return;
         }
         
@@ -327,52 +348,57 @@ public class GameUI : MonoBehaviour
         fillImage.color = fullHealthColor;
     }
     
-    // Update UI based on game state
+    // Update UI based on active unit
     public void UpdateUI(GameState state)
     {   
-        switch (state)
+        // Only enable UI if the active unit is a player
+        bool isPlayerActive = Unit.ActiveUnit is Player;
+        
+        if (isPlayerActive)
         {
-            case GameState.InitGame:
-            case GameState.PlayerTurn:
-                if (endTurnButton != null)
-                {
-                    endTurnButton.interactable = true;
-                    UpdateEndTurnButtonColor();
-                }
-                if (moveButton != null)
-                {
-                    moveButton.interactable = true;
-                    UpdateMoveButtonColor();
-                }
-                break;
-                
-            case GameState.EnemyTurn:
-                if (endTurnButton != null)
-                    endTurnButton.interactable = false;
-                if (moveButton != null)
-                    moveButton.interactable = false;
-                break;
-                
-            case GameState.Victory:
-                if (endTurnButton != null)
-                    endTurnButton.interactable = false;
-                if (moveButton != null)
-                    moveButton.interactable = false;
-                break;
-                
-            case GameState.Defeat:
-                if (endTurnButton != null)
-                    endTurnButton.interactable = false;
-                if (moveButton != null)
-                    moveButton.interactable = false;
-                break;
+            if (endTurnButton != null)
+            {
+                endTurnButton.interactable = true;
+                UpdateEndTurnButtonColor();
+            }
+            if (moveButton != null)
+            {
+                moveButton.interactable = true;
+                UpdateMoveButtonColor();
+            }
+            if (actionButtonsGroup != null)
+            {
+                actionButtonsGroup.alpha = enabledOpacity;
+                actionButtonsGroup.interactable = true;
+                actionButtonsGroup.blocksRaycasts = true;
+            }
+        }
+        else
+        {
+            // Disable all buttons when not a player unit
+            if (endTurnButton != null)
+            {
+                endTurnButton.interactable = false;
+                endTurnButton.GetComponent<Image>().color = inactiveModeColor;
+            }
+            if (moveButton != null)
+            {
+                moveButton.interactable = false;
+                moveButton.GetComponent<Image>().color = inactiveModeColor;
+            }
+            if (actionButtonsGroup != null)
+            {
+                actionButtonsGroup.alpha = disabledOpacity;
+                actionButtonsGroup.interactable = false;
+                actionButtonsGroup.blocksRaycasts = false;
+            }
         }
     }
     
     // Update end turn button color based on player movement status
     private void UpdateEndTurnButtonColor()
     {
-        if (endTurnButton == null || gameManager == null || gameManager.selectedUnit == null)
+        if (endTurnButton == null || Unit.ActiveUnit == null)
             return;
             
         // Get the button's image component
@@ -381,7 +407,7 @@ public class GameUI : MonoBehaviour
             return;
             
         // Check if player unit has moved and update button color
-        if (gameManager.selectedUnit.hasMoved)
+        if (Unit.ActiveUnit.hasMoved)
             buttonImage.color = readyColor;  // Green when ready to end turn
         else
             buttonImage.color = waitingColor; // Yellow when waiting for player to move
@@ -390,7 +416,7 @@ public class GameUI : MonoBehaviour
     // Update move button color based on move mode status
     private void UpdateMoveButtonColor()
     {
-        if (moveButton == null || gameManager == null || gameManager.selectedUnit == null)
+        if (moveButton == null || Unit.ActiveUnit == null)
             return;
             
         // Get the button's image component
@@ -399,7 +425,7 @@ public class GameUI : MonoBehaviour
             return;
             
         // Update button color based on move mode
-        if (gameManager.selectedUnit is Player playerUnit)
+        if (Unit.ActiveUnit is Player playerUnit)
         {
             if (playerUnit.IsInMoveMode && playerUnit.remainingMovementPoints > 0)
             {
@@ -424,11 +450,7 @@ public class GameUI : MonoBehaviour
     // Move button clicked
     public void OnMoveButtonClicked()
     {
-        if (gameManager == null || gameManager.selectedUnit == null)
-            return;
-            
-        // Toggle move mode on the player unit if it's a Player
-        if (gameManager.selectedUnit is Player playerUnit)
+        if (Unit.ActiveUnit is Player playerUnit)
         {
             playerUnit.ToggleMoveMode();
         }
@@ -437,8 +459,17 @@ public class GameUI : MonoBehaviour
     // End turn button clicked
     public void OnEndTurnClicked()
     {
-        if (gameManager != null)
+        if (gameManager == null)
+        {
+            gameManager = GameManager.Instance;
+            if (gameManager == null)
+                return;
+        }
+        
+        if (Unit.ActiveUnit is Player playerUnit)
+        {
             gameManager.EndPlayerTurn();
+        }
     }
     
     // Restart game button

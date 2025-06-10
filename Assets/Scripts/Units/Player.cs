@@ -6,11 +6,20 @@ public class Player : Unit
 {
     // Cache for path visualization
     public List<HexTile> highlightedTiles = new List<HexTile>();
+    public Color originalColor;
 
     public override void Start()
     {
+        // Set player's movement range to 5 before base initialization
+        movementRange = 5;
         base.Start();
         RegisterWithManagers();
+        
+        // Store the original color
+        if (spriteRenderer != null)
+        {
+            originalColor = spriteRenderer.color;
+        }
     }
     
     // Override this to prevent showing floating health bar for player
@@ -25,9 +34,9 @@ public class Player : Unit
     private void RegisterWithManagers()
     {
         // Register with GameManager
-        if (gameManager != null && gameManager.selectedUnit == null)
+        if (gameManager != null && Unit.ActiveUnit == null)
         {
-            gameManager.selectedUnit = this;
+            Unit.ActiveUnit = this;
         }
         
         // Register with HexGridManager
@@ -39,7 +48,7 @@ public class Player : Unit
     
     public override void Select()
     {
-        if (isInMoveMode)
+        if (isInMoveMode && IsPlayerTurn())
             ShowMovementRange();
     }
     
@@ -61,8 +70,26 @@ public class Player : Unit
         }
     }
     
+    private bool IsPlayerTurn()
+    {
+        bool isTurn = Unit.ActiveUnit == this && gameManager.CurrentState == GameState.PlayerTurn;
+            return isTurn;
+    }
+    
     public void ToggleMoveMode()
     {
+        // Only allow toggling move mode during player's turn
+        if (!IsPlayerTurn())
+        {
+            // Force exit move mode if it's not player's turn
+            if (isInMoveMode)
+            {
+                isInMoveMode = false;
+                HideMovementRange();
+            }
+            return;
+        }
+
         isInMoveMode = !isInMoveMode;
         
         if (isInMoveMode && remainingMovementPoints > 0)
@@ -77,8 +104,16 @@ public class Player : Unit
     
     public void ShowMovementRange()
     {
-        if (currentTile == null || remainingMovementPoints <= 0)
+        if (currentTile == null || remainingMovementPoints <= 0 || !IsPlayerTurn())
+        {
+            // Force exit move mode if it's not player's turn
+            if (isInMoveMode)
+            {
+                isInMoveMode = false;
+                HideMovementRange();
+            }
             return;
+        }
             
         List<HexTile> tilesInRange = GetTilesInRange(currentTile, remainingMovementPoints);
         
@@ -149,6 +184,21 @@ public class Player : Unit
     
     public override void MoveAlongPath(List<HexTile> path)
     {
+        Debug.Log($"Player: MoveAlongPath called - Current state: {gameManager?.CurrentState}, IsPlayerTurn: {IsPlayerTurn()}");
+        
+        // Don't allow movement if it's not player's turn
+        if (!IsPlayerTurn())
+        {
+            Debug.Log("Player: Not player's turn, cancelling movement");
+            // Force exit move mode if it's not player's turn
+            if (isInMoveMode)
+            {
+                isInMoveMode = false;
+                HideMovementRange();
+            }
+            return;
+        }
+
         // Clear existing path
         currentPath.Clear();
         
@@ -161,7 +211,7 @@ public class Player : Unit
         
         if (isMoving || remainingMovementPoints <= 0 || !isInMoveMode)
         {
-            Debug.LogError("MoveAlongPath: Unit is already moving, has no movement points left, or is not in move mode");
+            Debug.LogError($"MoveAlongPath: Cannot move - isMoving: {isMoving}, remainingPoints: {remainingMovementPoints}, isInMoveMode: {isInMoveMode}");
             return;
         }
         
@@ -170,13 +220,6 @@ public class Player : Unit
         
         // Hide movement range
         HideMovementRange();
-        
-        // Debug the path
-        //Debug.Log($"Path to follow: {path.Count} tiles");
-        //for (int i = 0; i < path.Count; i++)
-        //{
-        //    Debug.Log($"Tile {i}: {path[i].name} at {path[i].transform.position}");
-        //}
         
         // Store the verified path
         currentPath = new List<HexTile>(path);
@@ -196,7 +239,6 @@ public class Player : Unit
         {
             // Get the next tile in the path
             HexTile nextTile = currentPath[i];
-            //Debug.Log($"Moving to tile {i}/{currentPath.Count-1}: {nextTile.name}");
             
             // Calculate positions
             Vector3 startPos = transform.position;
@@ -245,14 +287,65 @@ public class Player : Unit
         {
             ShowMovementRange();
         }
-        
-        //Debug.Log($"Movement complete. Remaining movement points: {remainingMovementPoints}");
     }
     
     public override void ResetForNewTurn()
     {
+        // Ensure movement range is 5 at the start of each turn
+        movementRange = 5;
         base.ResetForNewTurn();
+        
+        // Force exit move mode and clear movement range
         isInMoveMode = false;
         HideMovementRange();
+    }
+
+    public override void OnTurnStart()
+    {
+        // Check if this is a consecutive player turn
+        if (gameManager != null && gameManager.CurrentState == GameState.PlayerTurn)
+        {
+            // Start coroutine to handle the delay
+            StartCoroutine(HandleConsecutiveTurn());
+        }
+        else
+        {
+            // Normal turn start
+            base.OnTurnStart();
+        }
+    }
+    
+    public override void OnTurnEnd()
+    {
+        // Start coroutine to handle the delay before clearing active unit
+        StartCoroutine(HandleTurnEnd());
+    }
+    
+    private IEnumerator HandleTurnEnd()
+    {
+        // Wait for 1 second
+        yield return new WaitForSeconds(1f);
+        
+        // Call base implementation to clear the turn flag and ActiveUnit
+        base.OnTurnEnd();
+        
+        // Force exit move mode and clear movement range
+        isInMoveMode = false;
+        HideMovementRange();
+        
+        // Start the next turn
+        if (gameManager != null)
+        {
+            gameManager.StartNextTurn();
+        }
+    }
+    
+    private IEnumerator HandleConsecutiveTurn()
+    {
+        // Wait for 1 second
+        yield return new WaitForSeconds(1f);
+        
+        // Start the turn
+        base.OnTurnStart();
     }
 }

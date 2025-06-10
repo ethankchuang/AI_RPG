@@ -1,11 +1,13 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 public class Unit : MonoBehaviour
 {
-    // Static flag for tracking any unit movement
+    // Static flags for tracking unit states
     public static bool IsAnyUnitMoving = false;
+    public static Unit ActiveUnit { get; set; }
     
     [Header("Unit Properties")]
     public int movementPoints;
@@ -25,7 +27,8 @@ public class Unit : MonoBehaviour
     
     [Header("Stats")]
     public int currentHealth;
-    public int actionValue = 0; // Current action value (0-100)
+    [SerializeField] public int actionValue = 0; // Current action value (0-100)
+    public int priority; // Higher number = higher priority
     
     [Header("Movement")]
     public int movementRange = 3;
@@ -67,6 +70,12 @@ public class Unit : MonoBehaviour
         // Find manager references
         gridManager = FindObjectOfType<HexGridManager>();
         gameManager = GameManager.Instance;
+        
+        // Initialize action value to 0
+        actionValue = 0;
+        
+        // Set priority based on sibling index (position in hierarchy)
+        priority = transform.GetSiblingIndex();
     }
     
     public virtual void Start()
@@ -82,41 +91,6 @@ public class Unit : MonoBehaviour
         }
         */
     }
-    
-    // Virtual method to determine if this unit should show a health bar
-    // By default, all units show a health bar, but Player will override this
-    /*
-    protected virtual bool ShouldShowHealthBar()
-    {
-        return true;
-    }
-    
-    private void CreateHealthBar()
-    {
-        // Find the Canvas in the scene
-        Canvas canvas = FindObjectOfType<Canvas>();
-        if (canvas == null)
-        {
-            Debug.LogWarning("No canvas found in scene for health bar!");
-            return;
-        }
-        
-        // Instantiate the health bar prefab
-        GameObject healthBarObject = Instantiate(healthBarPrefab, canvas.transform);
-        
-        // Get and initialize the health bar controller
-        healthBar = healthBarObject.GetComponent<HealthBarController>();
-        if (healthBar != null)
-        {
-            healthBar.Initialize(this);
-        }
-        else
-        {
-            Debug.LogWarning($"Health bar prefab for {gameObject.name} does not have a HealthBarController component!");
-            Destroy(healthBarObject);
-        }
-    }
-    */
     
     // Update current tile reference based on position
     public virtual void UpdateCurrentTile()
@@ -160,19 +134,11 @@ public class Unit : MonoBehaviour
     public virtual void Select() 
     {
         isSelected = true;
-        if (spriteRenderer != null)
-        {
-            spriteRenderer.color = Color.yellow;
-        }
     }
     
     public virtual void Deselect() 
     {
         isSelected = false;
-        if (spriteRenderer != null)
-        {
-            spriteRenderer.color = Color.white;
-        }
     }
     
     // Get tiles within movement range using fringe-based algorithm
@@ -209,8 +175,88 @@ public class Unit : MonoBehaviour
         return result;
     }
     
+    public virtual void ResetActionValue()
+    {
+        actionValue = 0;
+    }
+    
+    public virtual void OnTurnStart()
+    {
+        // Reset turn-based flags
+        hasMoved = false;
+        hasAttacked = false;
+        remainingMovementPoints = movementRange;
+        
+        // Reset movement mode
+        isInMoveMode = false;
+        if (currentTile != null)
+            currentTile.ResetColor();
+            
+        Debug.Log($"Turn Start: {gameObject.name} (Speed: {speed})");
+    }
+    
+    public virtual void OnTurnEnd()
+    {
+        // Clear active unit if this was the active unit
+        if (ActiveUnit == this)
+        {
+            Debug.Log($"Turn End: {gameObject.name} (Speed: {speed})");
+            ActiveUnit = null;
+            
+            // Reset turn-based flags
+            hasMoved = false;
+            hasAttacked = false;
+            remainingMovementPoints = movementPoints;
+            
+            // Reset movement mode
+            isInMoveMode = false;
+            if (currentTile != null)
+                currentTile.ResetColor();
+        }
+    }
+    
     // Base move along path method (to be overridden by subclasses)
-    public virtual void MoveAlongPath(List<HexTile> path) { }
+    public virtual void MoveAlongPath(List<HexTile> path) 
+    {
+        if (path == null || path.Count == 0)
+        {
+            Debug.Log($"{gameObject.name}: No valid path to move along");
+            return;
+        }
+        
+        Debug.Log($"{gameObject.name}: Starting movement along path of {path.Count} tiles");
+        currentPath = path;
+        StartCoroutine(MoveAlongPathCoroutine());
+    }
+    
+    protected IEnumerator MoveAlongPathCoroutine()
+    {
+        isMoving = true;
+        IsAnyUnitMoving = true;
+        
+        foreach (HexTile tile in currentPath)
+        {
+            Debug.Log($"{gameObject.name}: Moving to tile {tile.name}");
+            Vector3 targetPosition = new Vector3(tile.transform.position.x, tile.transform.position.y, transform.position.z);
+            
+            while (Vector3.Distance(transform.position, targetPosition) > 0.01f)
+            {
+                transform.position = Vector3.MoveTowards(transform.position, targetPosition, moveSpeed * Time.deltaTime);
+                yield return null;
+            }
+            
+            transform.position = targetPosition;
+            currentTile = tile;
+            remainingMovementPoints--;
+            
+            yield return new WaitForSeconds(tileStopDelay);
+        }
+        
+        isMoving = false;
+        IsAnyUnitMoving = false;
+        hasMoved = true;
+        Debug.Log($"{gameObject.name}: Finished movement. Remaining movement points: {remainingMovementPoints}");
+    }
     
     // Reset unit for a new turn
     public virtual void ResetForNewTurn()
@@ -241,12 +287,23 @@ public class Unit : MonoBehaviour
         if (spriteRenderer == null)
             yield break;
             
+        // Store the original color
         Color originalColor = spriteRenderer.color;
+        
+        // Flash red
         spriteRenderer.color = flashColor;
         
         yield return new WaitForSeconds(duration);
         
-        spriteRenderer.color = originalColor;
+        // If this is a player, use their stored original color
+        if (this is Player player)
+        {
+            spriteRenderer.color = player.originalColor;
+        }
+        else
+        {
+            spriteRenderer.color = originalColor;
+        }
     }
     
     // Heal the unit
@@ -275,35 +332,5 @@ public class Unit : MonoBehaviour
         
         // Animation or effect could go here
         Destroy(gameObject);
-    }
-    
-    // Action value methods
-    public virtual void IncrementActionValue()
-    {
-        actionValue += 1;
-        
-        if (actionValue >= (100 - speed))
-        {
-            actionValue = 0;
-            OnTurnStart();
-        }
-    }
-    
-    public virtual void ResetActionValue()
-    {
-        actionValue = 0;
-    }
-    
-    public virtual void OnTurnStart()
-    {
-        // Reset turn-based flags
-        hasMoved = false;
-        hasAttacked = false;
-        remainingMovementPoints = movementRange;
-        
-        // Reset movement mode
-        isInMoveMode = false;
-        if (currentTile != null)
-            currentTile.ResetColor();
     }
 } 
