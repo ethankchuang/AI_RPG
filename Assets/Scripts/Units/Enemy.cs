@@ -35,6 +35,9 @@ public class Enemy : Unit
     // Execute AI turn logic
     public void ExecuteTurn()
     {
+        // Update the last active unit tracker for consecutive turn detection
+        LastActiveUnit = this;
+        
         // Reset movement state
         hasMoved = false;
         hasAttacked = false;
@@ -146,7 +149,7 @@ public class Enemy : Unit
     {
         if (currentTile == null || player.CurrentTile == null || remainingMovementPoints <= 0)
         {
-            Debug.Log($"{gameObject.name}: Cannot move - MP: {remainingMovementPoints}");
+            //Debug.Log($"{gameObject.name}: Cannot move - MP: {remainingMovementPoints}");
             yield break;
         }
             
@@ -163,7 +166,7 @@ public class Enemy : Unit
         // If no path or just starting tile, we can't move
         if (path.Count <= 1)
         {
-            Debug.Log($"{gameObject.name}: No valid path found");
+            //Debug.Log($"{gameObject.name}: No valid path found");
             yield break;
         }
         
@@ -187,7 +190,7 @@ public class Enemy : Unit
         // If the valid path is just the starting tile, we can't move
         if (validPath.Count <= 1)
         {
-            Debug.Log($"{gameObject.name}: No valid unoccupied tiles in path");
+            //Debug.Log($"{gameObject.name}: No valid unoccupied tiles in path");
             yield break;
         }
             
@@ -195,7 +198,7 @@ public class Enemy : Unit
         int maxMoveSteps = Mathf.Min(validPath.Count - 1, remainingMovementPoints);
         List<HexTile> limitedPath = validPath.GetRange(0, maxMoveSteps + 1); // +1 because we include starting tile
         
-        Debug.Log($"{gameObject.name}: Moving along path of length {limitedPath.Count}");
+        //Debug.Log($"{gameObject.name}: Moving along path of length {limitedPath.Count}");
         // Move along the path
         yield return StartCoroutine(MoveAlongPathCoroutine(limitedPath));
     }
@@ -397,7 +400,7 @@ public class Enemy : Unit
         // If path is empty or only contains start tile, mark as moved and return
         if (path == null || path.Count <= 1)
         {
-            Debug.Log($"{gameObject.name}: No valid path to move along");
+            //Debug.Log($"{gameObject.name}: No valid path to move along");
             hasMoved = true;
             yield break;
         }
@@ -422,7 +425,7 @@ public class Enemy : Unit
                 
             if (isOccupied)
             {
-                Debug.Log($"{gameObject.name}: Tile {i} is occupied, stopping movement");
+                //Debug.Log($"{gameObject.name}: Tile {i} is occupied, stopping movement");
                 break; // Stop the path here
             }
             
@@ -435,7 +438,7 @@ public class Enemy : Unit
             float actualMoveTime = distance / moveSpeed;
             float elapsed = 0f;
             
-            Debug.Log($"{gameObject.name}: Moving to tile {i} of {path.Count}");
+            //Debug.Log($"{gameObject.name}: Moving to tile {i} of {path.Count}");
             
             // Lerp to the next position
             while (elapsed < actualMoveTime)
@@ -471,6 +474,6 @@ public class Enemy : Unit
         // Always mark as moved after attempting movement
         hasMoved = true;
         
-        Debug.Log($"{gameObject.name}: Movement complete. Remaining MP: {remainingMovementPoints}");
+        //Debug.Log($"{gameObject.name}: Movement complete. Remaining MP: {remainingMovementPoints}");
     }
 }

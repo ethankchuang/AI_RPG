@@ -9,6 +9,9 @@ public class Unit : MonoBehaviour
     public static bool IsAnyUnitMoving = false;
     public static Unit ActiveUnit { get; set; }
     
+    // Static variable to track the last unit that completed a turn (for consecutive turn detection)
+    public static Unit LastActiveUnit { get; set; }
+    
     [Header("Unit Properties")]
     public int movementPoints;
     public int attackDamage;
@@ -62,7 +65,7 @@ public class Unit : MonoBehaviour
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
             
         if (spriteRenderer == null)
-            Debug.LogError($"Unit {gameObject.name} has no SpriteRenderer!");
+            //Debug.LogError($"Unit {gameObject.name} has no SpriteRenderer!");
             
         currentHealth = maxHealth;
         remainingMovementPoints = movementPoints;
@@ -103,7 +106,7 @@ public class Unit : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("Failed to find closest tile in UpdateCurrentTile");
+            //Debug.LogWarning("Failed to find closest tile in UpdateCurrentTile");
         }
     }
     
@@ -192,7 +195,7 @@ public class Unit : MonoBehaviour
         if (currentTile != null)
             currentTile.ResetColor();
             
-        Debug.Log($"Turn Start: {gameObject.name} (Speed: {speed})");
+        //Debug.Log($"Turn Start: {gameObject.name} (Speed: {speed})");
     }
     
     public virtual void OnTurnEnd()
@@ -200,7 +203,7 @@ public class Unit : MonoBehaviour
         // Clear active unit if this was the active unit
         if (ActiveUnit == this)
         {
-            Debug.Log($"Turn End: {gameObject.name} (Speed: {speed})");
+            //Debug.Log($"Turn End: {gameObject.name} (Speed: {speed})");
             ActiveUnit = null;
             
             // Reset turn-based flags
@@ -220,11 +223,11 @@ public class Unit : MonoBehaviour
     {
         if (path == null || path.Count == 0)
         {
-            Debug.Log($"{gameObject.name}: No valid path to move along");
+            //Debug.Log($"{gameObject.name}: No valid path to move along");
             return;
         }
         
-        Debug.Log($"{gameObject.name}: Starting movement along path of {path.Count} tiles");
+        //Debug.Log($"{gameObject.name}: Starting movement along path of {path.Count} tiles");
         currentPath = path;
         StartCoroutine(MoveAlongPathCoroutine());
     }
@@ -236,7 +239,7 @@ public class Unit : MonoBehaviour
         
         foreach (HexTile tile in currentPath)
         {
-            Debug.Log($"{gameObject.name}: Moving to tile {tile.name}");
+            //Debug.Log($"{gameObject.name}: Moving to tile {tile.name}");
             Vector3 targetPosition = new Vector3(tile.transform.position.x, tile.transform.position.y, transform.position.z);
             
             while (Vector3.Distance(transform.position, targetPosition) > 0.01f)
@@ -255,7 +258,7 @@ public class Unit : MonoBehaviour
         isMoving = false;
         IsAnyUnitMoving = false;
         hasMoved = true;
-        Debug.Log($"{gameObject.name}: Finished movement. Remaining movement points: {remainingMovementPoints}");
+        //Debug.Log($"{gameObject.name}: Finished movement. Remaining movement points: {remainingMovementPoints}");
     }
     
     // Reset unit for a new turn

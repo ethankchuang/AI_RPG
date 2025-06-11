@@ -30,7 +30,7 @@ public class GameManager : MonoBehaviour
     public static GameManager Instance { get; private set; }
     
     // State
-    public GameState CurrentState = GameState.PlayerTurn;
+    public GameState CurrentState = GameState.InitGame;
     private List<Player> playerUnits = new List<Player>();
     private List<Enemy> enemyUnits = new List<Enemy>();
     private List<Unit> genericUnits = new List<Unit>(); // For any units that don't inherit from Player/Enemy
@@ -47,7 +47,7 @@ public class GameManager : MonoBehaviour
     {
         if (allUnits == null || allUnits.Count == 0)
         {
-            Debug.LogWarning("Units list is empty, finding all units...");
+            //Debug.LogWarning("Units list is empty, finding all units...");
             FindAllUnits();
         }
         return new List<Unit>(allUnits);
@@ -106,10 +106,6 @@ public class GameManager : MonoBehaviour
     // Set the game state and trigger necessary actions
     public void SetGameState(GameState newState)
     {
-        if (CurrentState != newState)
-        {
-            Debug.Log($"GameManager: State change: {CurrentState} -> {newState}");
-        }
         CurrentState = newState;
         
         // Update UI with the new game state
@@ -120,7 +116,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.LogError("GameManager: Could not find GameUI component!");
+            //Debug.LogError("GameManager: Could not find GameUI component!");
         }
         
         switch (CurrentState)
@@ -205,7 +201,7 @@ public class GameManager : MonoBehaviour
     {
         if (CurrentState != GameState.PlayerTurn)
         {
-            Debug.LogWarning($"Cannot end player turn in state {CurrentState}");
+            //Debug.LogWarning($"Cannot end player turn in state {CurrentState}");
             return;
         }
 
@@ -213,7 +209,7 @@ public class GameManager : MonoBehaviour
         Player player = FindObjectOfType<Player>();
         if (player == null)
         {
-            Debug.LogWarning("No player found!");
+            //Debug.LogWarning("No player found!");
             return;
         }
 
@@ -406,11 +402,11 @@ public class GameManager : MonoBehaviour
     
     public void StartNextTurn()
     {
-        Debug.Log("StartNextTurn: Beginning turn calculation");
+        //Debug.Log("StartNextTurn: Beginning turn calculation");
         
         // Make sure we have all units
         FindAllUnits();
-        Debug.Log($"StartNextTurn: Found {allUnits.Count} units");
+        //Debug.Log($"StartNextTurn: Found {allUnits.Count} units");
         
         // Find the minimum action value needed to reach threshold
         int leastActionNeeded = int.MaxValue;
@@ -420,7 +416,7 @@ public class GameManager : MonoBehaviour
             int threshold = 100 - unit.speed;
             int actionNeeded = threshold - unit.actionValue;
             
-            Debug.Log($"{unit.gameObject.name}: Action Value: {unit.actionValue}, Threshold: {threshold}, Action Needed: {actionNeeded}");
+            //Debug.Log($"{unit.gameObject.name}: Action Value: {unit.actionValue}, Threshold: {threshold}, Action Needed: {actionNeeded}");
             
             if (actionNeeded < leastActionNeeded)
             {
@@ -456,22 +452,22 @@ public class GameManager : MonoBehaviour
         
         if (nextUnit == null)
         {
-            Debug.LogWarning("No units found!");
+            //Debug.LogWarning("No units found!");
             return;
         }
         
-        Debug.Log($"StartNextTurn: Selected {nextUnit.gameObject.name} as next unit (Priority: {nextUnit.priority})");
-        if (tiedUnits.Count > 1)
-        {
-            Debug.Log($"Tie-breaker used: {tiedUnits.Count} units tied, {nextUnit.gameObject.name} won with priority {nextUnit.priority}");
-        }
+        //Debug.Log($"StartNextTurn: Selected {nextUnit.gameObject.name} as next unit (Priority: {nextUnit.priority})");
+        //if (tiedUnits.Count > 1)
+        //{
+        //    Debug.Log($"Tie-breaker used: {tiedUnits.Count} units tied, {nextUnit.gameObject.name} won with priority {nextUnit.priority}");
+        //}
         
         // Calculate how much action value to distribute to other units (only the amount this unit actually needed)
         int nextUnitThreshold = 100 - nextUnit.speed;
         int actionToDistribute = nextUnitThreshold - nextUnit.actionValue;
         
-        Debug.Log($"Next Turn: {nextUnit.gameObject.name} (Speed: {nextUnit.speed}, Action Value: {nextUnit.actionValue}, Threshold: {nextUnitThreshold})");
-        Debug.Log($"Distributing {actionToDistribute} action value to other units");
+        //Debug.Log($"Next Turn: {nextUnit.gameObject.name} (Speed: {nextUnit.speed}, Action Value: {nextUnit.actionValue}, Threshold: {nextUnitThreshold})");
+        //Debug.Log($"Distributing {actionToDistribute} action value to other units");
         
         // Reset the active unit's action value to 0
         nextUnit.actionValue = 0;
@@ -482,24 +478,33 @@ public class GameManager : MonoBehaviour
             if (unit != nextUnit)
             {
                 unit.actionValue += actionToDistribute;
-                Debug.Log($"{unit.gameObject.name} new action value: {unit.actionValue}");
+                //Debug.Log($"{unit.gameObject.name} new action value: {unit.actionValue}");
             }
         }
         
         // Set the current active unit
         Unit.ActiveUnit = nextUnit;
-        Debug.Log($"StartNextTurn: Set {nextUnit.gameObject.name} as ActiveUnit");
+        //Debug.Log($"StartNextTurn: Set {nextUnit.gameObject.name} as ActiveUnit");
         
         // Update game state based on unit type
         if (nextUnit is Player)
         {
-            Debug.Log("StartNextTurn: Starting player turn");
+            //Debug.Log("StartNextTurn: Starting player turn");
             SetGameState(GameState.PlayerTurn);
+            // Call OnTurnStart to handle consecutive turn detection
+            nextUnit.OnTurnStart();
         }
         else if (nextUnit is Enemy)
         {
-            Debug.Log("StartNextTurn: Starting enemy turn");
             CurrentState = GameState.EnemyTurn;
+            
+            // Update UI to show enemy turn (should disable UI)
+            GameUI gameUI = FindObjectOfType<GameUI>();
+            if (gameUI != null)
+            {
+                gameUI.UpdateUI(CurrentState);
+            }
+            
             Enemy currentEnemy = nextUnit as Enemy;
             currentEnemy.ExecuteTurn();
             
@@ -507,13 +512,11 @@ public class GameManager : MonoBehaviour
             StartCoroutine(WaitForEnemyTurn(currentEnemy));
         }
         
-        Debug.Log("StartNextTurn: Completed");
+        //Debug.Log("StartNextTurn: Completed");
     }
     
     private IEnumerator WaitForEnemyTurn(Enemy enemy)
     {
-        Debug.Log($"GameManager: Waiting for enemy {enemy.gameObject.name} turn to complete");
-        
         // Wait for the enemy to complete their turn
         while (!enemy.IsTurnComplete())
         {
@@ -538,11 +541,11 @@ public class GameManager : MonoBehaviour
     {
         if (currentActiveUnit == null)
         {
-            Debug.LogWarning("GameManager: No active unit to end turn for!");
+            //Debug.LogWarning("GameManager: No active unit to end turn for!");
             return;
         }
         
-        Debug.Log($"GameManager: Ending turn for {currentActiveUnit.gameObject.name}");
+        //Debug.Log($"GameManager: Ending turn for {currentActiveUnit.gameObject.name}");
         
         // Clear the current active unit reference but NOT the static ActiveUnit
         currentActiveUnit = null;

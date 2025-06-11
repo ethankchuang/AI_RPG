@@ -21,7 +21,7 @@ public class UIDebugger : MonoBehaviour
         // Log clicks
         if (Input.GetMouseButtonDown(0))
         {
-            Debug.Log($"Left click detected. Over UI: {isOverUI}");
+    
         }
     }
 } 

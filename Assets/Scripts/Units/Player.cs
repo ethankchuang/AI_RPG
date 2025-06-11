@@ -184,12 +184,12 @@ public class Player : Unit
     
     public override void MoveAlongPath(List<HexTile> path)
     {
-        Debug.Log($"Player: MoveAlongPath called - Current state: {gameManager?.CurrentState}, IsPlayerTurn: {IsPlayerTurn()}");
+        //Debug.Log($"Player: MoveAlongPath called - Current state: {gameManager?.CurrentState}, IsPlayerTurn: {IsPlayerTurn()}");
         
         // Don't allow movement if it's not player's turn
         if (!IsPlayerTurn())
         {
-            Debug.Log("Player: Not player's turn, cancelling movement");
+            //Debug.Log("Player: Not player's turn, cancelling movement");
             // Force exit move mode if it's not player's turn
             if (isInMoveMode)
             {
@@ -205,13 +205,13 @@ public class Player : Unit
         // Validate path and unit state
         if (path == null || path.Count < 2)
         {
-            Debug.LogError("MoveAlongPath: Invalid path (too short or null)");
+            //Debug.LogError("MoveAlongPath: Invalid path (too short or null)");
             return;
         }
         
         if (isMoving || remainingMovementPoints <= 0 || !isInMoveMode)
         {
-            Debug.LogError($"MoveAlongPath: Cannot move - isMoving: {isMoving}, remainingPoints: {remainingMovementPoints}, isInMoveMode: {isInMoveMode}");
+            //Debug.LogError($"MoveAlongPath: Cannot move - isMoving: {isMoving}, remainingPoints: {remainingMovementPoints}, isInMoveMode: {isInMoveMode}");
             return;
         }
         
@@ -302,10 +302,32 @@ public class Player : Unit
 
     public override void OnTurnStart()
     {
-        // Check if this is a consecutive player turn
-        if (gameManager != null && gameManager.CurrentState == GameState.PlayerTurn)
+        // Check if this is a TRUE consecutive player turn
+        // A consecutive turn means THIS SAME player is getting another turn immediately
+        bool isConsecutiveTurn = false;
+        
+        if (LastActiveUnit != null && LastActiveUnit == this)
         {
-            // Start coroutine to handle the delay
+            isConsecutiveTurn = true;
+        }
+        else if (LastActiveUnit != null && LastActiveUnit is Player && LastActiveUnit != this)
+        {
+            isConsecutiveTurn = true;  // Changed: multiple players having consecutive turns should also darken UI
+        }
+        else if (LastActiveUnit != null && LastActiveUnit is Enemy)
+        {
+            isConsecutiveTurn = false;
+        }
+        else
+        {
+            isConsecutiveTurn = false;
+        }
+        
+        // Update the last active unit to this player
+        LastActiveUnit = this;
+        
+        if (isConsecutiveTurn)
+        {
             StartCoroutine(HandleConsecutiveTurn());
         }
         else
@@ -322,10 +344,7 @@ public class Player : Unit
     }
     
     private IEnumerator HandleTurnEnd()
-    {
-        // Wait for 1 second
-        yield return new WaitForSeconds(1f);
-        
+    {   
         // Call base implementation to clear the turn flag and ActiveUnit
         base.OnTurnEnd();
         
@@ -338,14 +357,29 @@ public class Player : Unit
         {
             gameManager.StartNextTurn();
         }
+        
+        yield break; // Properly end the coroutine
     }
     
     private IEnumerator HandleConsecutiveTurn()
     {
-        // Wait for 1 second
-        yield return new WaitForSeconds(1f);
+        // Disable UI to show turn transition
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.SetUIEnabled(false);
+        }
         
-        // Start the turn
+        // Wait for the visual transition
+        yield return new WaitForSeconds(1.0f);
+        
+        // Start the turn first
         base.OnTurnStart();
+        
+        // Re-enable the UI after turn starts
+        if (gameUI != null)
+        {
+            gameUI.SetUIEnabled(true);
+        }
     }
 }

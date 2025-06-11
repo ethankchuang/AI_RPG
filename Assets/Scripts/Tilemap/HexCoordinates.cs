@@ -27,7 +27,7 @@ public struct HexCoordinates
         // Validate that q + r + s = 0
         if (q + r + s != 0)
         {
-            Debug.LogWarning("Invalid hex coordinates: q + r + s must equal 0");
+    
             // Force into valid form
             this.q = q;
             this.r = r;

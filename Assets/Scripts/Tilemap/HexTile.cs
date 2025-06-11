@@ -41,9 +41,6 @@ public class HexTile : MonoBehaviour
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
             
         gridManager = FindObjectOfType<HexGridManager>();
-        
-        if (gridManager == null)
-            Debug.LogError("Could not find HexGridManager!");
     }
     
     public virtual void Initialize(int col, int row)

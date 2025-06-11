@@ -33,13 +33,19 @@ public class GameUI : MonoBehaviour
     private EventSystem eventSystem;
     private Player playerUnit;
     
+    // Flag to temporarily override UI state during consecutive turn transitions
+    private bool isTemporarilyDisabled = false;
+    
+    // Track last UI state to avoid unnecessary updates in Update method
+    private bool lastUIState = true;
+    
     private void Awake()
     {
         // Make sure we have an EventSystem
         eventSystem = FindObjectOfType<EventSystem>();
         if (eventSystem == null)
         {
-            Debug.LogWarning("No EventSystem found in the scene. Creating one...");
+            //Debug.LogWarning("No EventSystem found in the scene. Creating one...");
             GameObject eventSystemObj = new GameObject("EventSystem");
             eventSystem = eventSystemObj.AddComponent<EventSystem>();
             eventSystemObj.AddComponent<StandaloneInputModule>();
@@ -60,7 +66,7 @@ public class GameUI : MonoBehaviour
         // Ensure we have a CanvasGroup
         if (actionButtonsGroup == null)
         {
-            Debug.LogError("GameUI: Failed to create or find CanvasGroup!");
+            //Debug.LogError("GameUI: Failed to create or find CanvasGroup!");
         }
         else
         {
@@ -82,11 +88,11 @@ public class GameUI : MonoBehaviour
         
         if (gameManager == null)
         {
-            Debug.LogError("GameUI: Could not find GameManager!");
+            //Debug.LogError("GameUI: Could not find GameManager!");
         }
         
-        // Initialize UI state
-        UpdateUI(gameManager != null ? gameManager.CurrentState : GameState.InitGame);
+        // Don't initialize UI state here - let GameManager handle it when it's ready
+        // The GameManager will call UpdateUI() when it properly initializes
     }
     
     private void Update()
@@ -102,26 +108,14 @@ public class GameUI : MonoBehaviour
         // Update button interactability based on active unit
         if (gameManager != null)
         {
-            // Only enable buttons if the active unit is a player
-            bool isPlayerActive = Unit.ActiveUnit is Player;
+            // Only enable buttons if the active unit is a player AND not temporarily disabled
+            bool shouldBeEnabled = Unit.ActiveUnit is Player && !isTemporarilyDisabled;
             
-            // Update button interactability
-            if (endTurnButton != null)
-                endTurnButton.interactable = isPlayerActive;
-                
-            if (moveButton != null)
-                moveButton.interactable = isPlayerActive;
-                
-            // Update CanvasGroup alpha
-            if (actionButtonsGroup != null)
+            // Use centralized function but only update if there's a change to avoid constant updates
+            if (shouldBeEnabled != lastUIState)
             {
-                float targetAlpha = isPlayerActive ? enabledOpacity : disabledOpacity;
-                if (Mathf.Abs(actionButtonsGroup.alpha - targetAlpha) > 0.01f)
-                {
-                    actionButtonsGroup.alpha = targetAlpha;
-                    actionButtonsGroup.interactable = isPlayerActive;
-                    actionButtonsGroup.blocksRaycasts = isPlayerActive;
-                }
+                SetUIEnabled(shouldBeEnabled);
+                lastUIState = shouldBeEnabled;
             }
         }
         
@@ -277,122 +271,20 @@ public class GameUI : MonoBehaviour
         }
     }
     
-    private void SetupHealthBarComponents()
-    {
-        // Configure the slider if present
-        if (healthBar != null)
-        {
-            // Make sure slider is set up from 0 to 1 for percentage
-            healthBar.minValue = 0f;
-            healthBar.maxValue = 1f;
-            healthBar.value = 1f; // Full health
-            
-            // If we're using a slider, make sure we can access its fill image
-            if (directFillImage == null)
-            {
-                Transform fillArea = healthBar.transform.Find("Fill Area");
-                if (fillArea != null)
-                {
-                    Transform fill = fillArea.Find("Fill");
-                    if (fill != null)
-                    {
-                        directFillImage = fill.GetComponent<Image>();
-                    }
-                }
-            }
-        }
-
-        // Scenario 1: We have a direct fill image assigned in the Inspector
-        if (directFillImage != null)
-        {
-            SetupDirectFillImage(directFillImage);
-            return;
-        }
-        
-        // If we still don't have a directFillImage and no slider, search components
-        if (directFillImage == null && healthBar == null)
-        {
-            // Try to find an image in children that might be our fill
-            Image[] images = GetComponentsInChildren<Image>();
-            foreach (Image img in images)
-            {
-                if (img.gameObject.name.ToLower().Contains("fill"))
-                {
-                    directFillImage = img;
-                    SetupDirectFillImage(directFillImage);
-                    return;
-                }
-            }
-            
-            // If none has "fill" in the name, use the first one
-            if (images.Length > 0)
-            {
-                directFillImage = images[0];
-                SetupDirectFillImage(directFillImage);
-                return;
-            }
-        }
-    }
-    
-    private void SetupDirectFillImage(Image fillImage)
-    {
-        if (fillImage == null) return;
-        
-        // Configure the image for proper fill behavior
-        fillImage.type = Image.Type.Filled;
-        fillImage.fillMethod = Image.FillMethod.Horizontal;
-        fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
-        fillImage.fillAmount = 1.0f; // Start full
-        
-        // Set color
-        fillImage.color = fullHealthColor;
-    }
-    
     // Update UI based on active unit
     public void UpdateUI(GameState state)
     {   
-        // Only enable UI if the active unit is a player
-        bool isPlayerActive = Unit.ActiveUnit is Player;
+        // If we're being called during early initialization (before GameManager is ready), 
+        // just disable the UI and wait for proper initialization
+        if (gameManager == null || state == GameState.InitGame)
+        {
+            SetUIEnabled(false);
+            return;
+        }
         
-        if (isPlayerActive)
-        {
-            if (endTurnButton != null)
-            {
-                endTurnButton.interactable = true;
-                UpdateEndTurnButtonColor();
-            }
-            if (moveButton != null)
-            {
-                moveButton.interactable = true;
-                UpdateMoveButtonColor();
-            }
-            if (actionButtonsGroup != null)
-            {
-                actionButtonsGroup.alpha = enabledOpacity;
-                actionButtonsGroup.interactable = true;
-                actionButtonsGroup.blocksRaycasts = true;
-            }
-        }
-        else
-        {
-            // Disable all buttons when not a player unit
-            if (endTurnButton != null)
-            {
-                endTurnButton.interactable = false;
-                endTurnButton.GetComponent<Image>().color = inactiveModeColor;
-            }
-            if (moveButton != null)
-            {
-                moveButton.interactable = false;
-                moveButton.GetComponent<Image>().color = inactiveModeColor;
-            }
-            if (actionButtonsGroup != null)
-            {
-                actionButtonsGroup.alpha = disabledOpacity;
-                actionButtonsGroup.interactable = false;
-                actionButtonsGroup.blocksRaycasts = false;
-            }
-        }
+        // Use centralized UI enable/disable function
+        bool isPlayerActive = Unit.ActiveUnit is Player;
+        SetUIEnabled(isPlayerActive);
     }
     
     // Update end turn button color based on player movement status
@@ -514,5 +406,66 @@ public class GameUI : MonoBehaviour
         // Restore original text and color
         healthText.text = originalText;
         healthText.color = originalColor;
+    }
+    
+    // Methods to control temporary UI disable state for consecutive turn transitions
+    public void SetTemporarilyDisabled(bool disabled)
+    {
+        isTemporarilyDisabled = disabled;
+        
+        // Force immediate UI update when temporarily disabled state changes
+        ForceUpdateUIState();
+    }
+    
+    // Centralized function to disable/enable UI
+    public void SetUIEnabled(bool enabled)
+    {
+        if (enabled)
+        {
+            // Enable UI - player turn state
+            if (endTurnButton != null)
+            {
+                endTurnButton.interactable = true;
+                UpdateEndTurnButtonColor();
+            }
+            if (moveButton != null)
+            {
+                moveButton.interactable = true;
+                UpdateMoveButtonColor();
+            }
+            if (actionButtonsGroup != null)
+            {
+                actionButtonsGroup.alpha = enabledOpacity;
+                actionButtonsGroup.interactable = true;
+                actionButtonsGroup.blocksRaycasts = true;
+            }
+        }
+        else
+        {
+            // Disable UI - enemy turn or transition state
+            if (endTurnButton != null)
+            {
+                endTurnButton.interactable = false;
+                endTurnButton.GetComponent<Image>().color = inactiveModeColor;
+            }
+            if (moveButton != null)
+            {
+                moveButton.interactable = false;
+                moveButton.GetComponent<Image>().color = inactiveModeColor;
+            }
+            if (actionButtonsGroup != null)
+            {
+                actionButtonsGroup.alpha = disabledOpacity;
+                actionButtonsGroup.interactable = false;
+                actionButtonsGroup.blocksRaycasts = false;
+            }
+        }
+    }
+    
+    // Force an immediate UI state update
+    private void ForceUpdateUIState()
+    {
+        bool shouldBeEnabled = Unit.ActiveUnit is Player && !isTemporarilyDisabled;
+        SetUIEnabled(shouldBeEnabled);
     }
 } 
