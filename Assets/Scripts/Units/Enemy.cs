@@ -6,6 +6,7 @@ public class Enemy : Unit
 {
     private Coroutine movementCoroutine;
     private float attackDelay = 0.5f;
+    private EnemyHealthDisplay healthDisplay;
 
     protected override void Awake()
     {
@@ -15,6 +16,36 @@ public class Enemy : Unit
     public override void Start()
     {
         base.Start();
+        
+        // Ensure health is properly initialized
+        if (currentHealth <= 0 && maxHealth > 0)
+            currentHealth = maxHealth;
+        else if (maxHealth <= 0)
+            maxHealth = 20; // Default health if not set
+            
+        if (currentHealth <= 0)
+            currentHealth = maxHealth;
+            
+        CreateHealthDisplay();
+    }
+    
+    private void CreateHealthDisplay()
+    {
+        // Add the health display component
+        healthDisplay = gameObject.AddComponent<EnemyHealthDisplay>();
+        healthDisplay.Initialize(this);
+    }
+    
+    protected override void Die()
+    {
+        // Clean up health display
+        if (healthDisplay != null)
+        {
+            Destroy(healthDisplay);
+        }
+        
+        // Call base die method
+        base.Die();
     }
     
     // Explicitly ensure that enemies always show health bars

@@ -9,7 +9,13 @@ public class GameUI : MonoBehaviour
     [Header("UI References")]
     public Button endTurnButton;
     public Button moveButton;
+    public Button attackButton;
+    public Button bagButton;
     public CanvasGroup actionButtonsGroup; // Add this to control opacity of all action buttons
+    public CombatUI combatUI; // Reference to the combat UI
+    
+    [Header("Skill Point Display")]
+    public Transform skillPointIndicators; // Parent transform containing 5 skill point visual indicators (sprites)
     
     [Header("UI Settings")]
     public float disabledOpacity = 0.3f; // Opacity when buttons are disabled
@@ -93,6 +99,33 @@ public class GameUI : MonoBehaviour
         
         // Don't initialize UI state here - let GameManager handle it when it's ready
         // The GameManager will call UpdateUI() when it properly initializes
+        
+        // Setup button listeners
+        if (endTurnButton != null)
+        {
+            endTurnButton.onClick.AddListener(OnEndTurnClicked);
+        }
+        
+        if (moveButton != null)
+        {
+            moveButton.onClick.AddListener(OnMoveButtonClicked);
+        }
+        
+        if (attackButton != null)
+        {
+            attackButton.onClick.AddListener(OnAttackButtonClicked);
+        }
+        
+        if (bagButton != null)
+        {
+            bagButton.onClick.AddListener(OnBagButtonClicked);
+        }
+        
+        // Find CombatUI if not assigned
+        if (combatUI == null)
+        {
+            combatUI = FindObjectOfType<CombatUI>();
+        }
     }
     
     private void Update()
@@ -119,12 +152,17 @@ public class GameUI : MonoBehaviour
             }
         }
         
-        // Update button colors based on active unit
+        // Update button colors
         UpdateEndTurnButtonColor();
         UpdateMoveButtonColor();
+        UpdateAttackButtonColor();
+        UpdateBagButtonColor();
         
         // Update health bar
         UpdateHealthBar();
+        
+        // Update skill points display
+        UpdateSkillPointsDisplay();
     }
     
     private void InitializeHealthBar()
@@ -342,9 +380,101 @@ public class GameUI : MonoBehaviour
     // Move button clicked
     public void OnMoveButtonClicked()
     {
-        if (Unit.ActiveUnit is Player playerUnit)
+        if (Unit.ActiveUnit is Player player)
         {
-            playerUnit.ToggleMoveMode();
+            player.ToggleMoveMode();
+        }
+    }
+    
+    // Update attack button color based on player status
+    private void UpdateAttackButtonColor()
+    {
+        if (attackButton == null || Unit.ActiveUnit == null)
+            return;
+            
+        // Get the button's image component
+        Image buttonImage = attackButton.GetComponent<Image>();
+        if (buttonImage == null)
+            return;
+            
+        // Update button color and interactability based on player status
+        if (Unit.ActiveUnit is Player player)
+        {
+            if (player.hasAttacked)
+            {
+                buttonImage.color = inactiveModeColor; // Gray when already attacked
+                attackButton.interactable = false;
+            }
+            else
+            {
+                buttonImage.color = activeModeColor;  // Cyan when player can attack
+                attackButton.interactable = true;
+            }
+        }
+        else
+        {
+            buttonImage.color = inactiveModeColor; // White when not player's turn
+            attackButton.interactable = false;
+        }
+    }
+    
+    // Update bag button color based on player status
+    private void UpdateBagButtonColor()
+    {
+        if (bagButton == null || Unit.ActiveUnit == null)
+            return;
+            
+        // Get the button's image component
+        Image buttonImage = bagButton.GetComponent<Image>();
+        if (buttonImage == null)
+            return;
+            
+        // Update button color - active when it's a player's turn
+        if (Unit.ActiveUnit is Player)
+        {
+            buttonImage.color = activeModeColor;  // Cyan when player can open bag
+        }
+        else
+        {
+            buttonImage.color = inactiveModeColor; // White when not player's turn
+        }
+    }
+    
+    // Attack button clicked - show combat UI and hide game UI
+    public void OnAttackButtonClicked()
+    {
+        if (Unit.ActiveUnit is Player player)
+        {
+            // Clear any existing state (including move highlights) before opening combat UI
+            player.HandleUIButtonClick();
+            
+            if (combatUI == null)
+            {
+                combatUI = FindObjectOfType<CombatUI>();
+                if (combatUI == null)
+                {
+            
+                    return;
+                }
+            }
+            
+            // Hide this UI GameObject and show combat UI
+            gameObject.SetActive(false);
+            combatUI.ShowCombatUI();
+            combatUI.SetGameUI(this); // Pass reference so combat UI can re-enable this UI
+        }
+    }
+    
+    // Bag button clicked - close movement highlight but don't do anything else yet
+    public void OnBagButtonClicked()
+    {
+        if (Unit.ActiveUnit is Player player)
+        {
+            // Clear any existing state (including move highlights)
+            player.HandleUIButtonClick();
+            
+            // TODO: Add bag/inventory functionality here later
+            // Bag button functionality not implemented yet
         }
     }
     
@@ -433,6 +563,16 @@ public class GameUI : MonoBehaviour
                 moveButton.interactable = true;
                 UpdateMoveButtonColor();
             }
+            if (attackButton != null)
+            {
+                attackButton.interactable = true;
+                UpdateAttackButtonColor();
+            }
+            if (bagButton != null)
+            {
+                bagButton.interactable = true;
+                UpdateBagButtonColor();
+            }
             if (actionButtonsGroup != null)
             {
                 actionButtonsGroup.alpha = enabledOpacity;
@@ -453,6 +593,16 @@ public class GameUI : MonoBehaviour
                 moveButton.interactable = false;
                 moveButton.GetComponent<Image>().color = inactiveModeColor;
             }
+            if (attackButton != null)
+            {
+                attackButton.interactable = false;
+                attackButton.GetComponent<Image>().color = inactiveModeColor;
+            }
+            if (bagButton != null)
+            {
+                bagButton.interactable = false;
+                bagButton.GetComponent<Image>().color = inactiveModeColor;
+            }
             if (actionButtonsGroup != null)
             {
                 actionButtonsGroup.alpha = disabledOpacity;
@@ -467,5 +617,54 @@ public class GameUI : MonoBehaviour
     {
         bool shouldBeEnabled = Unit.ActiveUnit is Player && !isTemporarilyDisabled;
         SetUIEnabled(shouldBeEnabled);
+    }
+    
+    // Test method you can call from Inspector to debug the CombatUI connection
+    [ContextMenu("Test Combat UI Connection")]
+    public void TestCombatUIConnection()
+    {
+        if (combatUI == null)
+        {
+            combatUI = FindObjectOfType<CombatUI>();
+            if (combatUI == null)
+                return;
+        }
+        
+        gameObject.SetActive(false);
+        combatUI.ShowCombatUI();
+    }
+
+    public void CloseCombatUI()
+    {
+        // Find the combat UI
+        CombatUI combatUI = FindObjectOfType<CombatUI>();
+        if (combatUI != null)
+        {
+            combatUI.SetCombatUIActive(false);
+        }
+        
+        // Re-activate the main game UI GameObject
+        gameObject.SetActive(true);
+        
+        // Re-enable the main game UI
+        SetUIEnabled(true);
+    }
+
+    private void UpdateSkillPointsDisplay()
+    {
+        if (gameManager == null) return;
+        
+        // Update visual indicators using sprites
+        if (skillPointIndicators != null)
+        {
+            int current = gameManager.GetCurrentSkillPoints();
+            
+            // Enable/disable child sprite objects based on current skill points
+            for (int i = 0; i < skillPointIndicators.childCount; i++)
+            {
+                GameObject indicator = skillPointIndicators.GetChild(i).gameObject;
+                indicator.SetActive(i < current);
+            }
+        }
     }
 } 

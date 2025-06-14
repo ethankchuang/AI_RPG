@@ -8,12 +8,37 @@ public class Player : Unit
     public List<HexTile> highlightedTiles = new List<HexTile>();
     public Color originalColor;
 
+    [Header("Attacks")]
+    public AttackSO basicAttack;
+    public AttackSO skill1;
+    public AttackSO skill2;
+
+    [Header("Combat")]
+    private bool isInTargetSelectMode = false;
+    private AttackSO currentSelectedAttack = null;
+    private List<HexTile> targetableTiles = new List<HexTile>();
+
+    [Header("References")]
+    private GameUI gameUI;
+
+    public enum PlayerState
+    {
+        Idle,
+        Moving,
+        Targeting
+    }
+
+    private PlayerState currentState = PlayerState.Idle;
+
     public override void Start()
     {
         // Set player's movement range to 5 before base initialization
         movementRange = 5;
         base.Start();
         RegisterWithManagers();
+        
+        // Find GameUI reference
+        gameUI = FindObjectOfType<GameUI>();
         
         // Store the original color
         if (spriteRenderer != null)
@@ -48,13 +73,79 @@ public class Player : Unit
     
     public override void Select()
     {
-        if (isInMoveMode && IsPlayerTurn())
-            ShowMovementRange();
+        if (currentState == PlayerState.Targeting)
+        {
+            // Get the mouse position in world space
+            Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            mousePos.z = 0;
+
+            // Find the closest tile to the mouse position
+            HexTile closestTile = null;
+            float closestDistance = float.MaxValue;
+
+            // First check if we clicked on any tile
+            RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
+            if (hit.collider != null)
+            {
+                HexTile clickedTile = hit.collider.GetComponent<HexTile>();
+                if (clickedTile != null)
+                {
+                    // If we clicked a valid target tile
+                    if (targetableTiles.Contains(clickedTile))
+                    {
+                        SelectTarget(clickedTile);
+                        // Close combat UI after successful target selection
+                        if (gameUI != null)
+                        {
+                            gameUI.CloseCombatUI();
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // If we get here, we either clicked outside any tile or on a non-target tile
+            CancelTargetSelection();
+        }
+        else if (currentState == PlayerState.Moving && IsPlayerTurn())
+        {
+            // Get the mouse position in world space
+            Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            mousePos.z = 0;
+
+            // Check if we clicked on any tile
+            RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
+            if (hit.collider != null)
+            {
+                HexTile clickedTile = hit.collider.GetComponent<HexTile>();
+                if (clickedTile != null && !highlightedTiles.Contains(clickedTile))
+                {
+                    // If we clicked outside the movement range, exit move mode
+                    currentState = PlayerState.Idle;
+                    HideMovementRange();
+                }
+            }
+            else
+            {
+                // If we clicked outside any tile, exit move mode
+                currentState = PlayerState.Idle;
+                HideMovementRange();
+            }
+        }
     }
     
     public override void Deselect()
     {
-        HideMovementRange();
+        switch (currentState)
+        {
+            case PlayerState.Targeting:
+                CancelTargetSelection();
+                break;
+            case PlayerState.Moving:
+                HideMovementRange();
+                currentState = PlayerState.Idle;
+                break;
+        }
     }
     
     public override void TakeDamage(int amount)
@@ -72,49 +163,47 @@ public class Player : Unit
     
     private bool IsPlayerTurn()
     {
-        bool isTurn = Unit.ActiveUnit == this && gameManager.CurrentState == GameState.PlayerTurn;
-            return isTurn;
+        bool isTurn = Unit.ActiveUnit == this && gameManager != null && gameManager.CurrentState == GameState.PlayerTurn;
+        return isTurn;
     }
     
     public void ToggleMoveMode()
     {
         // Only allow toggling move mode during player's turn
-        if (!IsPlayerTurn())
+        if (!IsPlayerTurn()) return;
+
+        // If we're already in move mode, just exit it
+        if (currentState == PlayerState.Moving)
+        {
+            HandleUIButtonClick();
+            return;
+        }
+        
+        // Clear any existing state first
+        HandleUIButtonClick();
+        
+        // Then start movement mode
+        currentState = PlayerState.Moving;
+        isInMoveMode = true; // SYNC WITH BASE CLASS!
+        if (remainingMovementPoints > 0)
+        {
+            ShowMovementRange();
+        }
+    }
+    
+        public void ShowMovementRange()
+    {
+        if (currentTile == null || remainingMovementPoints <= 0 || !IsPlayerTurn())
         {
             // Force exit move mode if it's not player's turn
-            if (isInMoveMode)
+            if (currentState == PlayerState.Moving)
             {
-                isInMoveMode = false;
+                currentState = PlayerState.Idle;
                 HideMovementRange();
             }
             return;
         }
 
-        isInMoveMode = !isInMoveMode;
-        
-        if (isInMoveMode && remainingMovementPoints > 0)
-        {
-            ShowMovementRange();
-        }
-        else
-        {
-            HideMovementRange();
-        }
-    }
-    
-    public void ShowMovementRange()
-    {
-        if (currentTile == null || remainingMovementPoints <= 0 || !IsPlayerTurn())
-        {
-            // Force exit move mode if it's not player's turn
-            if (isInMoveMode)
-            {
-                isInMoveMode = false;
-                HideMovementRange();
-            }
-            return;
-        }
-            
         List<HexTile> tilesInRange = GetTilesInRange(currentTile, remainingMovementPoints);
         
         // First reset all tiles
@@ -126,10 +215,11 @@ public class Player : Unit
         
         // Get reference to grid manager for checking occupied tiles
         HexGridManager gridManager = FindObjectOfType<HexGridManager>();
-            
-        // Then highlight tiles in range    
         foreach (HexTile tile in tilesInRange)
         {
+            // Skip if tile is null or destroyed
+            if (tile == null) continue;
+            
             // Only highlight walkable and unoccupied tiles
             bool isOccupied = false;
             
@@ -191,9 +281,9 @@ public class Player : Unit
         {
             //Debug.Log("Player: Not player's turn, cancelling movement");
             // Force exit move mode if it's not player's turn
-            if (isInMoveMode)
+            if (currentState == PlayerState.Moving)
             {
-                isInMoveMode = false;
+                currentState = PlayerState.Idle;
                 HideMovementRange();
             }
             return;
@@ -209,9 +299,9 @@ public class Player : Unit
             return;
         }
         
-        if (isMoving || remainingMovementPoints <= 0 || !isInMoveMode)
+        if (isMoving || remainingMovementPoints <= 0 || currentState != PlayerState.Moving)
         {
-            //Debug.LogError($"MoveAlongPath: Cannot move - isMoving: {isMoving}, remainingPoints: {remainingMovementPoints}, isInMoveMode: {isInMoveMode}");
+            //Debug.LogError($"MoveAlongPath: Cannot move - isMoving: {isMoving}, remainingPoints: {remainingMovementPoints}, isInMoveMode: {currentState == PlayerState.Moving}");
             return;
         }
         
@@ -228,7 +318,7 @@ public class Player : Unit
         StartCoroutine(MoveAlongPathCoroutine());
     }
     
-    private IEnumerator MoveAlongPathCoroutine()
+    private new IEnumerator MoveAlongPathCoroutine()
     {
         // Set flags
         isMoving = true;
@@ -283,7 +373,7 @@ public class Player : Unit
         }
         
         // Show updated movement range if we still have points left
-        if (isInMoveMode && remainingMovementPoints > 0)
+        if (currentState == PlayerState.Moving && remainingMovementPoints > 0)
         {
             ShowMovementRange();
         }
@@ -296,45 +386,17 @@ public class Player : Unit
         base.ResetForNewTurn();
         
         // Force exit move mode and clear movement range
-        isInMoveMode = false;
+        currentState = PlayerState.Idle;
+        isInMoveMode = false; // SYNC WITH BASE CLASS!
         HideMovementRange();
     }
 
     public override void OnTurnStart()
     {
-        // Check if this is a TRUE consecutive player turn
-        // A consecutive turn means THIS SAME player is getting another turn immediately
-        bool isConsecutiveTurn = false;
-        
-        if (LastActiveUnit != null && LastActiveUnit == this)
-        {
-            isConsecutiveTurn = true;
-        }
-        else if (LastActiveUnit != null && LastActiveUnit is Player && LastActiveUnit != this)
-        {
-            isConsecutiveTurn = true;  // Changed: multiple players having consecutive turns should also darken UI
-        }
-        else if (LastActiveUnit != null && LastActiveUnit is Enemy)
-        {
-            isConsecutiveTurn = false;
-        }
-        else
-        {
-            isConsecutiveTurn = false;
-        }
-        
-        // Update the last active unit to this player
-        LastActiveUnit = this;
-        
-        if (isConsecutiveTurn)
-        {
-            StartCoroutine(HandleConsecutiveTurn());
-        }
-        else
-        {
-            // Normal turn start
-            base.OnTurnStart();
-        }
+        // Reset to idle state at turn start
+        currentState = PlayerState.Idle;
+        isInMoveMode = false; // SYNC WITH BASE CLASS!
+        base.OnTurnStart();
     }
     
     public override void OnTurnEnd()
@@ -349,7 +411,8 @@ public class Player : Unit
         base.OnTurnEnd();
         
         // Force exit move mode and clear movement range
-        isInMoveMode = false;
+        currentState = PlayerState.Idle;
+        isInMoveMode = false; // SYNC WITH BASE CLASS!
         HideMovementRange();
         
         // Start the next turn
@@ -381,5 +444,152 @@ public class Player : Unit
         {
             gameUI.SetUIEnabled(true);
         }
+    }
+
+    public void PerformBasicAttack(Unit target)
+    {
+        if (basicAttack != null && !hasAttacked)
+        {
+            // Check if we have enough SP for this attack
+            if (gameManager.TryUseSkillPoints(basicAttack.SPCost))
+            {
+                basicAttack.Execute(this, target);
+                hasAttacked = true; // Mark that we've attacked this turn
+                // Re-enable main game UI
+                if (gameUI != null)
+                {
+                    gameUI.gameObject.SetActive(true);
+                    gameUI.SetUIEnabled(true);
+                }
+            }
+        }
+    }
+
+    public void UseSkill1(Unit target)
+    {
+        if (skill1 == null || hasAttacked) return;
+        if (!gameManager.TryUseSkillPoints(skill1.SPCost)) return;
+        skill1.Execute(this, target);
+        hasAttacked = true; // Mark that we've attacked this turn
+        // Re-enable main game UI
+        if (gameUI != null)
+        {
+            gameUI.gameObject.SetActive(true);
+            gameUI.SetUIEnabled(true);
+        }
+    }
+
+    public void UseSkill2(Unit target)
+    {
+        if (skill2 == null || hasAttacked) return;
+        if (!gameManager.TryUseSkillPoints(skill2.SPCost)) return;
+        skill2.Execute(this, target);
+        hasAttacked = true; // Mark that we've attacked this turn
+        // Re-enable main game UI
+        if (gameUI != null)
+        {
+            gameUI.gameObject.SetActive(true);
+            gameUI.SetUIEnabled(true);
+        }
+    }
+
+    public void HandleUIButtonClick()
+    {
+        // Always clear movement mode first
+        if (currentState == PlayerState.Moving)
+        {
+            HideMovementRange();
+        }
+        
+        // Then handle any other state
+        switch (currentState)
+        {
+            case PlayerState.Targeting:
+                HideTargetableTiles();
+                break;
+        }
+        currentState = PlayerState.Idle;
+        isInMoveMode = false; // SYNC WITH BASE CLASS!
+    }
+
+    public void StartTargetSelection(AttackSO attack)
+    {
+        if (!IsPlayerTurn()) return;
+        
+        // Clear any existing state first
+        HandleUIButtonClick();
+        
+        // Then start new targeting
+        currentState = PlayerState.Targeting;
+        currentSelectedAttack = attack;
+        ShowTargetableTiles();
+    }
+
+    private void ShowTargetableTiles()
+    {
+        if (currentTile == null || currentSelectedAttack == null) return;
+        
+        // Clear previous highlights
+        HideTargetableTiles();
+        
+        // Get tiles in range
+        List<HexTile> tilesInRange = GetTilesInRange(currentTile, currentSelectedAttack.range);
+        
+        // First highlight all tiles in range
+        foreach (HexTile tile in tilesInRange)
+        {
+            tile.SetAsMovementRangeTile(); // Use the same highlight as movement
+            highlightedTiles.Add(tile);
+        }
+        
+        // Then highlight tiles that contain enemies
+        foreach (HexTile tile in tilesInRange)
+        {
+            Unit unitOnTile = gridManager.GetUnitOnTile(tile);
+            if (unitOnTile != null && unitOnTile is Enemy)
+            {
+                tile.SetAsTargetableTile();
+                targetableTiles.Add(tile);
+            }
+        }
+    }
+
+    private void HideTargetableTiles()
+    {
+        // Reset all highlighted tiles
+        foreach (HexTile tile in highlightedTiles)
+        {
+            if (tile != null)
+                tile.ResetColor();
+        }
+        highlightedTiles.Clear();
+        targetableTiles.Clear();
+    }
+
+    private void CancelTargetSelection()
+    {
+        currentState = PlayerState.Idle;
+        currentSelectedAttack = null;
+        HideTargetableTiles();
+    }
+
+    public void SelectTarget(HexTile targetTile)
+    {
+        if (currentState != PlayerState.Targeting || currentSelectedAttack == null) return;
+        
+        Unit targetUnit = gridManager.GetUnitOnTile(targetTile);
+        if (targetUnit != null && targetUnit is Enemy)
+        {
+            // Execute the attack
+            if (currentSelectedAttack == basicAttack)
+                PerformBasicAttack(targetUnit);
+            else if (currentSelectedAttack == skill1)
+                UseSkill1(targetUnit);
+            else if (currentSelectedAttack == skill2)
+                UseSkill2(targetUnit);
+        }
+        
+        // Clean up
+        CancelTargetSelection();
     }
 }

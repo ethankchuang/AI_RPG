@@ -21,7 +21,7 @@ public class HexTile : MonoBehaviour
     public Color defaultColor = Color.white;
     public Color invalidColor = Color.red;
     public Color pathColor = new Color(0.0f, 1f, 1f, 1f); // Cyan for valid paths
-    public Color movementRangeColor = new Color(1f, 1f, 0f, 0.7f); // Yellow for movement range
+    public Color movementRangeColor = new Color(0f, 1f, 0f, 1f); // Bright green for movement range
     
     // Neighbors for pathfinding
     public List<HexTile> neighbors = new List<HexTile>();
@@ -100,12 +100,6 @@ public class HexTile : MonoBehaviour
         if (Unit.IsAnyUnitMoving)
             return;
         
-        // Look for player to check if we're in movement mode
-        Player player = null;
-        HexGridManager gridManager = FindObjectOfType<HexGridManager>();
-        if (gridManager != null)
-            player = gridManager.playerUnit;
-        
         // Handle path visualization
         if (gridManager != null)
             gridManager.ShowPathToTile(this);
@@ -139,6 +133,12 @@ public class HexTile : MonoBehaviour
         {
             if (gridManager != null)
                 gridManager.ExecuteMovementToTile(this);
+        }
+
+        // If there's an active player unit in target selection mode
+        if (Unit.ActiveUnit is Player player && player != null)
+        {
+            player.Select();
         }
     }
     
@@ -193,8 +193,12 @@ public class HexTile : MonoBehaviour
         
         if (spriteRenderer == null)
             return;
-            
+        
         spriteRenderer.color = movementRangeColor;
+        
+        // Force the sprite renderer to update
+        spriteRenderer.enabled = false;
+        spriteRenderer.enabled = true;
     }
     
     // Reset tile color to default
@@ -240,6 +244,22 @@ public class HexTile : MonoBehaviour
         UpdateVisuals();
     }
     #endregion
+
+    public void SetAsTargetableTile()
+    {
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.color = new Color(1f, 0.5f, 0.5f); // Red tint for targetable tiles
+        }
+    }
+
+    public void SetAsInRangeTile()
+    {
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.color = new Color(0.5f, 0.5f, 1f); // Blue tint for in-range tiles
+        }
+    }
 }
 
 // Enum for tile types

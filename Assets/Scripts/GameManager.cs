@@ -26,6 +26,10 @@ public class GameManager : MonoBehaviour
     public GameObject playerUnitPrefab;
     public GameObject enemyUnitPrefab;
     
+    [Header("Skill Point System")]
+    [SerializeField] private int maxSkillPoints = 5;
+    [SerializeField] private int currentSkillPoints = 5;
+    
     // Singleton instance
     public static GameManager Instance { get; private set; }
     
@@ -52,6 +56,79 @@ public class GameManager : MonoBehaviour
         }
         return new List<Unit>(allUnits);
     }
+    
+    #region Skill Point Management
+    
+    // Get current skill points
+    public int GetCurrentSkillPoints()
+    {
+        return currentSkillPoints;
+    }
+    
+    // Get maximum skill points
+    public int GetMaxSkillPoints()
+    {
+        return maxSkillPoints;
+    }
+    
+    // Try to use skill points (returns true if successful)
+    public bool TryUseSkillPoints(int amount)
+    {
+        // Allow 0-cost attacks (like basic attacks) to always succeed
+        if (amount == 0)
+        {
+            return true;
+        }
+        
+        if (currentSkillPoints >= amount && amount > 0)
+        {
+            currentSkillPoints -= amount;
+            string skillType = amount == 1 ? "Special Skill 1" : amount == 2 ? "Special Skill 2" : $"Skill (cost: {amount})";
+    
+            return true;
+        }
+        else
+        {
+            string skillType = amount == 1 ? "Special Skill 1" : amount == 2 ? "Special Skill 2" : $"Skill (cost: {amount})";
+    
+        }
+        return false;
+    }
+    
+    // Restore skill points (capped at maximum)
+    public void RestoreSkillPoints(int amount)
+    {
+        if (amount > 0)
+        {
+            int previousPoints = currentSkillPoints;
+            currentSkillPoints = Mathf.Min(currentSkillPoints + amount, maxSkillPoints);
+            int actualRestored = currentSkillPoints - previousPoints;
+            
+            if (actualRestored > 0)
+            {
+    
+            }
+            else
+            {
+    
+            }
+        }
+    }
+    
+    // Reset skill points to maximum (useful for new game or debugging)
+    public void ResetSkillPoints()
+    {
+        currentSkillPoints = maxSkillPoints;
+
+    }
+    
+    // Check if we have enough skill points
+    public bool HasEnoughSkillPoints(int amount)
+    {
+        return currentSkillPoints >= amount;
+    }
+    
+    #endregion
     
     #region Initialization
     private void Awake()

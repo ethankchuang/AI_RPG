@@ -68,7 +68,7 @@ public class Unit : MonoBehaviour
             //Debug.LogError($"Unit {gameObject.name} has no SpriteRenderer!");
             
         currentHealth = maxHealth;
-        remainingMovementPoints = movementPoints;
+        remainingMovementPoints = movementRange;
         
         // Find manager references
         gridManager = FindObjectOfType<HexGridManager>();
@@ -209,7 +209,7 @@ public class Unit : MonoBehaviour
             // Reset turn-based flags
             hasMoved = false;
             hasAttacked = false;
-            remainingMovementPoints = movementPoints;
+            remainingMovementPoints = movementRange;
             
             // Reset movement mode
             isInMoveMode = false;
@@ -266,7 +266,7 @@ public class Unit : MonoBehaviour
     {
         hasMoved = false;
         hasAttacked = false;
-        remainingMovementPoints = movementPoints;
+        remainingMovementPoints = movementRange;
     }
     
     // Take damage

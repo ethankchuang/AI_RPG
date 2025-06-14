@@ -197,7 +197,9 @@ public class HexGridManager : MonoBehaviour
         
         // Only show path if in move mode
         if (!playerUnit.IsInMoveMode || playerUnit.remainingMovementPoints <= 0)
+        {
             return;
+        }
         
         // Find the current tile of the player unit
         HexTile startTile = GetTileAtPosition(playerUnit.transform.position);
@@ -669,5 +671,22 @@ public class HexGridManager : MonoBehaviour
         {
             RefreshTileNeighbors();
         }
+    }
+
+    public Unit GetUnitOnTile(HexTile tile)
+    {
+        if (tile == null) return null;
+        
+        // Check all units in the game
+        foreach (Unit unit in GameManager.Instance.GetAllUnits())
+        {
+            // If the unit's position is very close to the tile's position, it's on that tile
+            if (Vector2.Distance(unit.transform.position, tile.transform.position) < 0.1f)
+            {
+                return unit;
+            }
+        }
+        
+        return null;
     }
 } 
