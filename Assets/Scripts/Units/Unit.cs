@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine.EventSystems;
 
 public class Unit : MonoBehaviour
 {
@@ -32,6 +33,9 @@ public class Unit : MonoBehaviour
     public int currentHealth;
     [SerializeField] public int actionValue = 0; // Current action value (0-100)
     public int priority; // Higher number = higher priority
+    
+    [Header("Status Effects")]
+    [SerializeField] private List<StatusEffect> activeEffects = new List<StatusEffect>();
     
     [Header("Movement")]
     public int movementRange = 3;
@@ -194,6 +198,9 @@ public class Unit : MonoBehaviour
         isInMoveMode = false;
         if (currentTile != null)
             currentTile.ResetColor();
+        
+        // Process status effects
+        ProcessStatusEffects();
             
         //Debug.Log($"Turn Start: {gameObject.name} (Speed: {speed})");
     }
@@ -336,4 +343,152 @@ public class Unit : MonoBehaviour
         // Animation or effect could go here
         Destroy(gameObject);
     }
+    
+    #region Mouse Hover Functionality
+    // Handle mouse hover to show unit information
+    protected virtual void OnMouseEnter()
+    {
+        // Skip if pointer is over UI
+        if (IsPointerOverUI())
+            return;
+            
+        // Only show hover info for players
+        if (this is Player player)
+        {
+            ShowPlayerHoverInfo(player);
+        }
+    }
+    
+    protected virtual void OnMouseExit()
+    {
+        // Skip if pointer is over UI
+        if (IsPointerOverUI())
+            return;
+            
+        // Hide hover info
+        HideHoverInfo();
+    }
+    
+    // Check if the pointer is over a UI element
+    protected bool IsPointerOverUI()
+    {
+        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    }
+    
+    // Show hover information for a player
+    protected virtual void ShowPlayerHoverInfo(Player player)
+    {
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.ShowPlayerTooltip(player);
+        }
+    }
+    
+    // Hide hover information
+    protected virtual void HideHoverInfo()
+    {
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.HidePlayerTooltip();
+        }
+    }
+    #endregion
+    
+    #region Status Effects Management
+    // Apply a status effect to this unit
+    public virtual void ApplyStatusEffect(StatusEffect effect)
+    {
+        if (effect == null) return;
+        
+        // Check if effect is stackable
+        if (!effect.stackable)
+        {
+            // Remove existing effects of the same type
+            RemoveStatusEffect(effect.GetType());
+        }
+        
+        // Clone the effect and add it
+        StatusEffect newEffect = effect.Clone();
+        activeEffects.Add(newEffect);
+        newEffect.OnApply(this);
+    }
+    
+    // Remove a specific status effect
+    public virtual void RemoveStatusEffect(System.Type effectType)
+    {
+        for (int i = activeEffects.Count - 1; i >= 0; i--)
+        {
+            if (activeEffects[i].GetType() == effectType)
+            {
+                activeEffects[i].OnRemove(this);
+                activeEffects.RemoveAt(i);
+            }
+        }
+    }
+    
+    // Remove a specific status effect instance
+    public virtual void RemoveStatusEffect(StatusEffect effect)
+    {
+        if (activeEffects.Contains(effect))
+        {
+            effect.OnRemove(this);
+            activeEffects.Remove(effect);
+        }
+    }
+    
+    // Process all active status effects (called at turn start)
+    private void ProcessStatusEffects()
+    {
+        for (int i = activeEffects.Count - 1; i >= 0; i--)
+        {
+            StatusEffect effect = activeEffects[i];
+            effect.OnActionStart(this);
+            
+            // Remove expired effects
+            if (effect.IsExpired())
+            {
+                activeEffects.RemoveAt(i);
+            }
+        }
+    }
+    
+    // Update status effects (called every frame)
+    protected virtual void UpdateStatusEffects()
+    {
+        foreach (StatusEffect effect in activeEffects)
+        {
+            effect.OnUpdate(this);
+        }
+    }
+    
+    // Get all active status effects
+    public List<StatusEffect> GetActiveStatusEffects()
+    {
+        return new List<StatusEffect>(activeEffects);
+    }
+    
+    // Check if unit has a specific status effect
+    public bool HasStatusEffect(System.Type effectType)
+    {
+        foreach (StatusEffect effect in activeEffects)
+        {
+            if (effect.GetType() == effectType)
+                return true;
+        }
+        return false;
+    }
+    
+    // Check if unit has a specific status effect by name
+    public bool HasStatusEffect(string effectName)
+    {
+        foreach (StatusEffect effect in activeEffects)
+        {
+            if (effect.effectName == effectName)
+                return true;
+        }
+        return false;
+    }
+    #endregion
 } 

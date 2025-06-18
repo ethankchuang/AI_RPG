@@ -71,9 +71,9 @@ public class ActionOrderDisplay : MonoBehaviour
         if (gameManager == null)
             return;
 
-        // Get all units and sort by action value (highest first)
+        // Get all units and predict the next 6 turns
         List<Unit> units = gameManager.GetAllUnits();
-        units = units.OrderByDescending(u => u.actionValue).ToList();
+        List<Unit> turnOrder = PredictTurnOrder(units, 6);
 
         // Update each card
         for (int i = 0; i < cardSprites.Count; i++)
@@ -83,34 +83,119 @@ public class ActionOrderDisplay : MonoBehaviour
                 continue;
 
             // If we have a unit for this position, display its sprite
-            if (i < units.Count && units[i] != null)
+            if (i < turnOrder.Count && turnOrder[i] != null)
             {
-                Unit unit = units[i];
+                Unit unit = turnOrder[i];
                 SpriteRenderer unitSpriteRenderer = unit.GetComponentInChildren<SpriteRenderer>();
                 if (unitSpriteRenderer != null && unitSpriteRenderer.sprite != null)
                 {
                     cardSprite.sprite = unitSpriteRenderer.sprite;
                     cardSprite.enabled = true;
                     
-                    // Make the current active unit's card more prominent
-                    if (unit == Unit.ActiveUnit)
-                    {
-                        cardSprite.color = new Color(1, 1, 1, 1); // Full opacity for current unit
-                    }
-                    else
-                    {
-                        // Fade based on action value
-                        float normalizedValue = unit.actionValue / 100f;
-                        cardSprite.color = new Color(1, 1, 1, 0.5f + (normalizedValue * 0.5f));
-                    }
+                    // Use the unit's actual color with full opacity
+                    Color unitColor = unitSpriteRenderer.color;
+                    cardSprite.color = new Color(unitColor.r, unitColor.g, unitColor.b, 1f);
                 }
             }
             else
             {
-                // No unit for this position, make sprite transparent
+                // No unit for this position, hide the sprite
                 cardSprite.sprite = null;
-                cardSprite.color = new Color(1, 1, 1, 0.5f);
+                cardSprite.enabled = false;
             }
         }
+    }
+
+    private List<Unit> PredictTurnOrder(List<Unit> allUnits, int turnsToPredict)
+    {
+        List<Unit> turnOrder = new List<Unit>();
+        
+        // Create a copy of units with their current action values for simulation
+        List<UnitActionData> simulatedUnits = new List<UnitActionData>();
+        foreach (Unit unit in allUnits)
+        {
+            if (unit != null)
+            {
+                simulatedUnits.Add(new UnitActionData
+                {
+                    unit = unit,
+                    actionValue = unit.actionValue,
+                    speed = unit.speed,
+                    priority = unit.priority
+                });
+            }
+        }
+
+        // Simulate the next turns
+        for (int turn = 0; turn < turnsToPredict && simulatedUnits.Count > 0; turn++)
+        {
+            // Find the minimum action value needed to reach threshold
+            int leastActionNeeded = int.MaxValue;
+            
+            foreach (UnitActionData unitData in simulatedUnits)
+            {
+                int threshold = 100 - unitData.speed;
+                int actionNeeded = threshold - unitData.actionValue;
+                
+                if (actionNeeded < leastActionNeeded)
+                {
+                    leastActionNeeded = actionNeeded;
+                }
+            }
+            
+            // Find all units that need the least action (tied units)
+            List<UnitActionData> tiedUnits = new List<UnitActionData>();
+            foreach (UnitActionData unitData in simulatedUnits)
+            {
+                int threshold = 100 - unitData.speed;
+                int actionNeeded = threshold - unitData.actionValue;
+                
+                if (actionNeeded == leastActionNeeded)
+                {
+                    tiedUnits.Add(unitData);
+                }
+            }
+            
+            // Use priority to break ties
+            UnitActionData nextUnit = null;
+            int highestPriority = int.MinValue;
+            
+            foreach (UnitActionData unitData in tiedUnits)
+            {
+                if (unitData.priority > highestPriority)
+                {
+                    highestPriority = unitData.priority;
+                    nextUnit = unitData;
+                }
+            }
+            
+            if (nextUnit == null) break;
+            
+            // Add this unit to the turn order
+            turnOrder.Add(nextUnit.unit);
+            
+            // Reset the active unit's action value to 0
+            nextUnit.actionValue = 0;
+            
+            // Distribute the action value to all other units
+            foreach (UnitActionData unitData in simulatedUnits)
+            {
+                if (unitData != nextUnit)
+                {
+                    unitData.actionValue += leastActionNeeded;
+                }
+            }
+        }
+
+        return turnOrder;
+    }
+
+    // Helper class for simulating action values
+    private class UnitActionData
+    {
+        public Unit unit;
+        public int actionValue;
+        public int speed;
+        public int priority;
     }
 }

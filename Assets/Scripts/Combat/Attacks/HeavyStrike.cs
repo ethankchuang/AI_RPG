@@ -7,8 +7,9 @@ public class HeavyStrike : AttackSO
     {
         // Set default values for heavy strike
         attackName = "Heavy Strike";
-        description = "A powerful attack that deals high damage.";
-        damage = 15;
+        description = "A powerful attack that deals increased damage based on your attack stat.";
+        damageMultiplier = 1.5f;  // 150% of attack stat
+        baseDamage = 2;  // Small flat bonus
         range = 2;
         SPCost = 1;
     }

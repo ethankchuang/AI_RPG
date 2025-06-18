@@ -8,18 +8,23 @@ public class Player : Unit
     public List<HexTile> highlightedTiles = new List<HexTile>();
     public Color originalColor;
 
+    [Header("Character Data")]
+    public CharacterData characterData;
+
     [Header("Attacks")]
     public AttackSO basicAttack;
     public AttackSO skill1;
     public AttackSO skill2;
 
     [Header("Combat")]
-    private bool isInTargetSelectMode = false;
     private AttackSO currentSelectedAttack = null;
     private List<HexTile> targetableTiles = new List<HexTile>();
 
     [Header("References")]
     private GameUI gameUI;
+
+    [Header("Aggro")]
+    public int aggroValue = 1; // How likely enemies are to target this player
 
     public enum PlayerState
     {
@@ -32,8 +37,17 @@ public class Player : Unit
 
     public override void Start()
     {
-        // Set player's movement range to 5 before base initialization
-        movementRange = 5;
+        // Apply character data if available
+        if (characterData != null)
+        {
+            ApplyCharacterData();
+        }
+        else
+        {
+            // Set default player's movement range to 5 before base initialization
+            movementRange = 5;
+        }
+        
         base.Start();
         RegisterWithManagers();
         
@@ -78,10 +92,6 @@ public class Player : Unit
             // Get the mouse position in world space
             Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             mousePos.z = 0;
-
-            // Find the closest tile to the mouse position
-            HexTile closestTile = null;
-            float closestDistance = float.MaxValue;
 
             // First check if we clicked on any tile
             RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
@@ -163,7 +173,8 @@ public class Player : Unit
     
     private bool IsPlayerTurn()
     {
-        bool isTurn = Unit.ActiveUnit == this && gameManager != null && gameManager.CurrentState == GameState.PlayerTurn;
+        // This player's turn is when they are the active unit and game is in progress
+        bool isTurn = Unit.ActiveUnit == this && gameManager != null && gameManager.CurrentState == GameState.InProgress;
         return isTurn;
     }
     
@@ -450,7 +461,7 @@ public class Player : Unit
     {
         if (basicAttack != null && !hasAttacked)
         {
-            // Check if we have enough SP for this attack
+            // Check if we have enough SP for this attack using shared skill points
             if (gameManager.TryUseSkillPoints(basicAttack.SPCost))
             {
                 basicAttack.Execute(this, target);
@@ -519,7 +530,15 @@ public class Player : Unit
         // Clear any existing state first
         HandleUIButtonClick();
         
-        // Then start new targeting
+        // Check if this attack requires targeting
+        if (!attack.requiresTarget)
+        {
+            // Execute immediately for non-targeted attacks
+            ExecuteNonTargetedAttack(attack);
+            return;
+        }
+        
+        // Then start new targeting for targeted attacks
         currentState = PlayerState.Targeting;
         currentSelectedAttack = attack;
         ShowTargetableTiles();
@@ -591,5 +610,78 @@ public class Player : Unit
         
         // Clean up
         CancelTargetSelection();
+    }
+    
+    // Execute a non-targeted attack immediately
+    private void ExecuteNonTargetedAttack(AttackSO attack)
+    {
+        if (attack == null || hasAttacked) return;
+        
+        // Check if we have enough SP for this attack
+        if (!gameManager.TryUseSkillPoints(attack.SPCost)) return;
+        
+        // Execute the attack
+        attack.ExecuteNonTargeted(this);
+        hasAttacked = true; // Mark that we've attacked this turn
+        
+        Debug.Log($"{gameObject.name} used {attack.attackName} (non-targeted)");
+        
+        // Re-enable main game UI and close combat UI
+        if (gameUI != null)
+        {
+            gameUI.CloseCombatUI();
+        }
+    }
+    
+    // Apply character data to this player
+    public void ApplyCharacterData()
+    {
+        if (characterData == null) return;
+        
+        // Apply base stats
+        maxHealth = characterData.maxHealth;
+        currentHealth = maxHealth;
+        attackDamage = characterData.attackDamage;
+        speed = characterData.speed;
+        movementRange = characterData.movementRange;
+        
+        // Apply aggro value
+        aggroValue = characterData.aggroValue;
+        
+        // Apply attacks
+        basicAttack = characterData.basicAttack;
+        skill1 = characterData.skill1;
+        skill2 = characterData.skill2;
+        
+        // Apply visual settings
+        if (spriteRenderer != null)
+        {
+            if (characterData.characterSprite != null)
+                spriteRenderer.sprite = characterData.characterSprite;
+            
+            spriteRenderer.color = characterData.characterColor;
+            originalColor = characterData.characterColor;
+        }
+        
+        // Update game object name for easier identification
+        gameObject.name = $"Player_{characterData.characterName}";
+    }
+    
+    // Get character type for UI and other systems
+    public CharacterType GetCharacterType()
+    {
+        return characterData != null ? characterData.characterType : CharacterType.Warrior;
+    }
+    
+    // Get character name for UI
+    public string GetCharacterName()
+    {
+        return characterData != null ? characterData.characterName : "Unknown";
+    }
+    
+    // Get character description for UI
+    public string GetCharacterDescription()
+    {
+        return characterData != null ? characterData.description : "A mysterious fighter.";
     }
 }

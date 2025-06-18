@@ -6,8 +6,7 @@ using System.Linq; // Add this for LINQ methods like Select
 public enum GameState
 {
     InitGame,
-    PlayerTurn,
-    EnemyTurn,
+    InProgress,  // Individual unit turns (replaces PlayerTurn/EnemyTurn)
     Victory,
     Defeat
 }
@@ -26,9 +25,16 @@ public class GameManager : MonoBehaviour
     public GameObject playerUnitPrefab;
     public GameObject enemyUnitPrefab;
     
+    [Header("Enemy Types")]
+    public EnemyData[] availableEnemyTypes = new EnemyData[3];  // Light, Medium, Heavy
+    
+    [Header("Character Types")]
+    public CharacterData[] availableCharacters = new CharacterData[4];
+    public CharacterType[] selectedCharacterTypes = new CharacterType[3];
+    
     [Header("Skill Point System")]
     [SerializeField] private int maxSkillPoints = 5;
-    [SerializeField] private int currentSkillPoints = 5;
+    [SerializeField] private int currentSkillPoints = 3;
     
     // Singleton instance
     public static GameManager Instance { get; private set; }
@@ -154,6 +160,9 @@ public class GameManager : MonoBehaviour
             
         if (cameraFollow == null)
             cameraFollow = FindObjectOfType<CameraFollow>();
+            
+        // Initialize selected character types with defaults
+        InitializeDefaultCharacterTypes();
     }
     
     private void Start()
@@ -202,12 +211,9 @@ public class GameManager : MonoBehaviour
                 InitializeGame();
                 break;
                 
-            case GameState.PlayerTurn:
-                StartPlayerTurn();
-                break;
-                
-            case GameState.EnemyTurn:
-                // Enemy turns are now handled directly in StartNextTurn()
+            case GameState.InProgress:
+                // Individual unit turns are now handled directly in StartNextTurn()
+                // No need for separate player/enemy turn logic
                 break;
                 
             case GameState.Victory:
@@ -256,41 +262,17 @@ public class GameManager : MonoBehaviour
     #endregion
     
     #region Turn Management
-    // Start player turn
-    private void StartPlayerTurn()
-    {
-        // Reset all player units
-        foreach (Player unit in playerUnits)
-        {
-            if (unit != null)
-                unit.ResetForNewTurn();
-        }
-        
-        // Make the first player unit active
-        if (playerUnits.Count > 0)
-            SelectUnit(playerUnits[0]);
-        else
-            Unit.ActiveUnit = null;
-    }
-    
-    // End player turn (called from UI)
+    // End current player's turn (called from UI)
     public void EndPlayerTurn()
     {
-        if (CurrentState != GameState.PlayerTurn)
+        // Only allow ending turn if the active unit is a player
+        if (!(Unit.ActiveUnit is Player player))
         {
-            //Debug.LogWarning($"Cannot end player turn in state {CurrentState}");
+            //Debug.LogWarning("Cannot end turn - active unit is not a player!");
             return;
         }
 
-        // Find the player unit
-        Player player = FindObjectOfType<Player>();
-        if (player == null)
-        {
-            //Debug.LogWarning("No player found!");
-            return;
-        }
-
-        // End the player's turn (StartNextTurn will be called from the player's coroutine)
+        // End the current player's turn (StartNextTurn will be called from the player's coroutine)
         player.OnTurnEnd();
     }
     
@@ -312,7 +294,8 @@ public class GameManager : MonoBehaviour
         // Update active unit
         Unit.ActiveUnit = unit;
         
-        // If it's a player unit, update grid manager reference
+        // If it's a player unit, update grid manager reference for backward compatibility
+        // (though the grid manager now uses Unit.ActiveUnit directly)
         if (unit is Player playerUnit && gridManager != null)
             gridManager.playerUnit = playerUnit;
     }
@@ -358,18 +341,31 @@ public class GameManager : MonoBehaviour
     // Place a single player unit
     private void PlacePlayerUnit()
     {
-        // Find a good starting position (center bottom of grid)
-        HexTile startTile = FindPlayerStartTile();
+        // Find a good starting position (different for each player)
+        HexTile startTile = FindPlayerStartTile(playerUnits.Count);
         
         // Place the player unit
         if (startTile != null && playerUnitPrefab != null)
         {
             GameObject unitObj = Instantiate(playerUnitPrefab, startTile.transform.position, Quaternion.identity);
-            unitObj.name = $"PlayerUnit_{playerUnits.Count}";
             
             Player playerUnit = unitObj.GetComponent<Player>();
             if (playerUnit != null)
             {
+                // Assign character data based on selected types
+                if (playerUnits.Count < selectedCharacterTypes.Length)
+                {
+                    CharacterType selectedType = selectedCharacterTypes[playerUnits.Count];
+                    CharacterData characterData = GetCharacterData(selectedType);
+                    
+                    if (characterData != null)
+                    {
+                        playerUnit.characterData = characterData;
+                        // Force apply character data immediately after assignment
+                        playerUnit.ApplyCharacterData();
+                    }
+                }
+                
                 playerUnits.Add(playerUnit);
                 if (Unit.ActiveUnit == null)
                     Unit.ActiveUnit = playerUnit; // This is the active unit for pathfinding
@@ -394,27 +390,47 @@ public class GameManager : MonoBehaviour
         if (enemyUnitPrefab == null)
             return;
             
-        // Get eligible tiles for enemy placement (top of grid)
+        // Get eligible tiles for enemy placement (top of grid) that are not occupied
         List<HexTile> placementTiles = new List<HexTile>();
         foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
         {
-            if (tile.row >= gridGenerator.gridHeight - 2 && tile.isWalkable)
+            if (tile.row >= gridGenerator.gridHeight - 2 && tile.isWalkable && !IsUnitOnTile(tile))
                 placementTiles.Add(tile);
         }
         
-        // Randomize placement
-        System.Random random = new System.Random();
-        for (int i = 0; i < placementTiles.Count; i++)
+        // If no tiles are available in the top rows, expand search to more rows
+        if (placementTiles.Count == 0)
         {
-            int j = random.Next(i, placementTiles.Count);
-            HexTile temp = placementTiles[i];
-            placementTiles[i] = placementTiles[j];
-            placementTiles[j] = temp;
+            foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
+            {
+                if (tile.row >= gridGenerator.gridHeight - 4 && tile.isWalkable && !IsUnitOnTile(tile))
+                    placementTiles.Add(tile);
+            }
         }
         
-        // Place enemy unit
+        // Last resort: any available walkable tile
+        if (placementTiles.Count == 0)
+        {
+            foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
+            {
+                if (tile.isWalkable && !IsUnitOnTile(tile))
+                    placementTiles.Add(tile);
+            }
+        }
+        
+        // Randomize placement order
         if (placementTiles.Count > 0)
         {
+            System.Random random = new System.Random();
+            for (int i = 0; i < placementTiles.Count; i++)
+            {
+                int j = random.Next(i, placementTiles.Count);
+                HexTile temp = placementTiles[i];
+                placementTiles[i] = placementTiles[j];
+                placementTiles[j] = temp;
+            }
+            
+            // Place enemy unit on the first available tile
             HexTile placementTile = placementTiles[0];
             GameObject unitObj = Instantiate(enemyUnitPrefab, placementTile.transform.position, Quaternion.identity);
             unitObj.name = $"EnemyUnit_{enemyUnits.Count}";
@@ -422,6 +438,8 @@ public class GameManager : MonoBehaviour
             Enemy enemyUnit = unitObj.GetComponent<Enemy>();
             if (enemyUnit != null)
             {
+                // Assign random enemy data
+                AssignRandomEnemyData(enemyUnit);
                 enemyUnits.Add(enemyUnit);
             }
             else
@@ -432,30 +450,74 @@ public class GameManager : MonoBehaviour
                     genericUnits.Add(unit);
             }
         }
+        else
+        {
+            Debug.LogWarning($"GameManager: Could not find any available tiles to place enemy unit {enemyUnits.Count}!");
+        }
     }
     
-    // Find a good starting tile for the player
-    private HexTile FindPlayerStartTile()
+    // Find a good starting tile for the player (different positions for each player)
+    private HexTile FindPlayerStartTile(int playerIndex)
     {
         HexTile[] allTiles = gridGenerator.GetComponentsInChildren<HexTile>();
         
-        // Try to find center-bottom tile
+        // Get center column and try different positions for each player
         int centerCol = gridGenerator.gridWidth / 2;
         
-        foreach (HexTile tile in allTiles)
+        // Define starting positions relative to center
+        int[] columnOffsets = { 0, -1, 1, -2, 2 }; // Center, left, right, far left, far right
+        int[] rowOffsets = { 0, 0, 0, 0, 0 };      // All on bottom row initially
+        
+        // Try the designated position for this player index
+        if (playerIndex < columnOffsets.Length)
         {
-            if (tile.column == centerCol && tile.row == 0 && tile.isWalkable)
-                return tile;
+            int targetCol = centerCol + columnOffsets[playerIndex];
+            int targetRow = rowOffsets[playerIndex];
+            
+            foreach (HexTile tile in allTiles)
+            {
+                if (tile.column == targetCol && tile.row == targetRow && tile.isWalkable && !IsUnitOnTile(tile))
+                    return tile;
+            }
         }
         
-        // If not found, use any walkable tile
+        // If designated position is not available, try any walkable tile in the bottom rows
+        for (int row = 0; row < 3; row++) // Check bottom 3 rows
+        {
+            for (int col = 0; col < gridGenerator.gridWidth; col++)
+            {
+                foreach (HexTile tile in allTiles)
+                {
+                    if (tile.column == col && tile.row == row && tile.isWalkable && !IsUnitOnTile(tile))
+                        return tile;
+                }
+            }
+        }
+        
+        // Last resort: any walkable tile
         foreach (HexTile tile in allTiles)
         {
-            if (tile.isWalkable)
+            if (tile.isWalkable && !IsUnitOnTile(tile))
                 return tile;
         }
         
         return null;
+    }
+    
+    // Check if a unit is already on a tile
+    private bool IsUnitOnTile(HexTile tile)
+    {
+        if (gridManager != null)
+            return gridManager.IsUnitOnTile(tile);
+            
+        // Fallback check
+        Collider2D[] colliders = Physics2D.OverlapPointAll(tile.transform.position);
+        foreach (Collider2D collider in colliders)
+        {
+            if (collider.GetComponent<Unit>() != null)
+                return true;
+        }
+        return false;
     }
     #endregion
     
@@ -563,25 +625,29 @@ public class GameManager : MonoBehaviour
         Unit.ActiveUnit = nextUnit;
         //Debug.Log($"StartNextTurn: Set {nextUnit.gameObject.name} as ActiveUnit");
         
-        // Update game state based on unit type
+        // Set game state to InProgress (handles both player and enemy turns)
+        if (CurrentState != GameState.InProgress)
+        {
+            SetGameState(GameState.InProgress);
+        }
+        
+        // Update UI to reflect the current active unit (player or enemy)
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.UpdateUI(CurrentState);
+        }
+        
+        // Handle the specific unit type
         if (nextUnit is Player)
         {
-            //Debug.Log("StartNextTurn: Starting player turn");
-            SetGameState(GameState.PlayerTurn);
+            //Debug.Log("StartNextTurn: Starting individual player turn");
             // Call OnTurnStart to handle consecutive turn detection
             nextUnit.OnTurnStart();
         }
         else if (nextUnit is Enemy)
         {
-            CurrentState = GameState.EnemyTurn;
-            
-            // Update UI to show enemy turn (should disable UI)
-            GameUI gameUI = FindObjectOfType<GameUI>();
-            if (gameUI != null)
-            {
-                gameUI.UpdateUI(CurrentState);
-            }
-            
+            //Debug.Log("StartNextTurn: Starting enemy turn");
             Enemy currentEnemy = nextUnit as Enemy;
             currentEnemy.ExecuteTurn();
             
@@ -590,6 +656,60 @@ public class GameManager : MonoBehaviour
         }
         
         //Debug.Log("StartNextTurn: Completed");
+    }
+    
+    // Get character data for a given character type
+    private CharacterData GetCharacterData(CharacterType characterType)
+    {
+        foreach (CharacterData data in availableCharacters)
+        {
+            if (data != null && data.characterType == characterType)
+                return data;
+        }
+        return null;
+    }
+    
+    // Set the selected character types (can be called from UI)
+    public void SetSelectedCharacterTypes(CharacterType[] types)
+    {
+        if (types.Length <= selectedCharacterTypes.Length)
+        {
+            for (int i = 0; i < types.Length; i++)
+            {
+                selectedCharacterTypes[i] = types[i];
+            }
+        }
+    }
+    
+    // Get available character types
+    public CharacterType[] GetAvailableCharacterTypes()
+    {
+        List<CharacterType> types = new List<CharacterType>();
+        foreach (CharacterData data in availableCharacters)
+        {
+            if (data != null)
+                types.Add(data.characterType);
+        }
+        return types.ToArray();
+    }
+    
+    // Initialize default character selection
+    private void InitializeDefaultCharacterTypes()
+    {
+        // Default setup: first 3 character types or fallback to Warrior
+        for (int i = 0; i < selectedCharacterTypes.Length; i++)
+        {
+            if (i < 4) // We have 4 character types
+            {
+                selectedCharacterTypes[i] = (CharacterType)i;
+            }
+            else
+            {
+                selectedCharacterTypes[i] = CharacterType.Warrior; // Fallback
+            }
+        }
+        
+
     }
     
     private IEnumerator WaitForEnemyTurn(Enemy enemy)
@@ -629,6 +749,31 @@ public class GameManager : MonoBehaviour
         
         // Start the next turn
         StartNextTurn();
+    }
+    
+    // Assign random enemy data to an enemy unit
+    private void AssignRandomEnemyData(Enemy enemy)
+    {
+        if (enemy == null || availableEnemyTypes == null || availableEnemyTypes.Length == 0)
+            return;
+        
+        // Filter out null enemy data
+        List<EnemyData> validEnemyTypes = new List<EnemyData>();
+        foreach (EnemyData data in availableEnemyTypes)
+        {
+            if (data != null)
+                validEnemyTypes.Add(data);
+        }
+        
+        if (validEnemyTypes.Count == 0)
+            return;
+        
+        // Select random enemy type
+        EnemyData selectedData = validEnemyTypes[Random.Range(0, validEnemyTypes.Count)];
+        enemy.enemyData = selectedData;
+        
+        // Force apply the data immediately
+        enemy.ApplyEnemyData();
     }
     
     public void OnUnitDeath(Unit unit)

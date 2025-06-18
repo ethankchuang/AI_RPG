@@ -28,11 +28,22 @@ public class GameUI : MonoBehaviour
     public Color fullHealthColor = Color.green;
     public Color lowHealthColor = Color.red;
     
+    [Header("Player Stats Display")]
+    public TextMeshProUGUI nameText;     // Character name display
+    public TextMeshProUGUI attackText;   // Attack damage display
+    public TextMeshProUGUI speedText;    // Speed display
+    public TextMeshProUGUI tauntText;    // Taunt/Aggro value display
+    
     [Header("Button Colors")]
     public Color waitingColor = Color.yellow;
     public Color readyColor = Color.green;
     public Color activeModeColor = Color.cyan;
     public Color inactiveModeColor = Color.white;
+    
+    [Header("Player Tooltip")]
+    public GameObject playerTooltip;          // Drag your PlayerTooltip panel here
+    public TextMeshProUGUI tooltipText;      // Drag your TooltipText here
+    public Vector3 tooltipOffset = new Vector3(10, -10, 0);  // Offset from mouse
     
     // Reference to the player
     private GameManager gameManager;
@@ -44,6 +55,14 @@ public class GameUI : MonoBehaviour
     
     // Track last UI state to avoid unnecessary updates in Update method
     private bool lastUIState = true;
+    
+    // Tooltip variables
+    private RectTransform tooltipRect;
+    private Canvas tooltipCanvas;
+    private bool isTooltipVisible = false;
+    private Player currentTooltipPlayer = null;
+    private float tooltipHideTimer = 0f;
+    private const float TOOLTIP_HIDE_DELAY = 0.1f;
     
     private void Awake()
     {
@@ -126,6 +145,9 @@ public class GameUI : MonoBehaviour
         {
             combatUI = FindObjectOfType<CombatUI>();
         }
+        
+        // Initialize tooltip
+        InitializeTooltip();
     }
     
     private void Update()
@@ -161,8 +183,17 @@ public class GameUI : MonoBehaviour
         // Update health bar
         UpdateHealthBar();
         
+        // Update player stats display
+        UpdatePlayerStatsDisplay();
+        
         // Update skill points display
         UpdateSkillPointsDisplay();
+        
+        // Update tooltip position if visible
+        UpdateTooltipPosition();
+        
+        // Handle tooltip hide timer and mouse detection
+        HandleTooltipVisibility();
     }
     
     private void InitializeHealthBar()
@@ -174,7 +205,7 @@ public class GameUI : MonoBehaviour
         {
             // Set initial health values using our universal method
             float healthPercent = (float)playerUnit.currentHealth / playerUnit.maxHealth;
-            SetHealthBarByAllMeans(healthPercent);
+            SetHealthBarByAllMeans(healthPercent, playerUnit);
         }
     }
     
@@ -199,22 +230,30 @@ public class GameUI : MonoBehaviour
     
     private void UpdateHealthBar()
     {
-        // Try to find player if not already set
-        if (playerUnit == null)
+        // Always get the currently active player for health display
+        Player activePlayer = Unit.ActiveUnit as Player;
+        if (activePlayer == null)
         {
+            // If no active player, try to find any player
             FindPlayerUnit();
             if (playerUnit == null) return;
+            activePlayer = playerUnit;
+        }
+        else
+        {
+            // Update our cached reference to the active player
+            playerUnit = activePlayer;
         }
         
         // Calculate health percentage
-        float healthPercent = (float)playerUnit.currentHealth / playerUnit.maxHealth;
+        float healthPercent = (float)activePlayer.currentHealth / activePlayer.maxHealth;
         
         // Update the UI using all methods
-        SetHealthBarByAllMeans(healthPercent);
+        SetHealthBarByAllMeans(healthPercent, activePlayer);
     }
     
     // This method tries all techniques to modify the health bar
-    private void SetHealthBarByAllMeans(float healthPercent)
+    private void SetHealthBarByAllMeans(float healthPercent, Player player = null)
     {
         // 1. Standard slider value
         if (healthBar != null)
@@ -242,17 +281,23 @@ public class GameUI : MonoBehaviour
             Canvas.ForceUpdateCanvases();
         }
         
-        // 5. Update text
+        // 5. Update text with character type and proper health values
         if (healthText != null)
         {
-            if (playerUnit != null)
+            if (player != null)
             {
-                healthText.text = $"CURRENT HP: {playerUnit.currentHealth} / {playerUnit.maxHealth}";
+                string characterType = player.GetCharacterType().ToString();
+                healthText.text = $"{characterType} HP: {player.currentHealth} / {player.maxHealth}";
+            }
+            else if (playerUnit != null)
+            {
+                string characterType = playerUnit.GetCharacterType().ToString();
+                healthText.text = $"{characterType} HP: {playerUnit.currentHealth} / {playerUnit.maxHealth}";
             }
             else
             {
                 int displayHealth = (int)(100 * healthPercent);
-                healthText.text = $"CURRENT HP: {displayHealth} / 100";
+                healthText.text = $"Player HP: {displayHealth} / 100";
             }
         }
     }
@@ -320,7 +365,7 @@ public class GameUI : MonoBehaviour
             return;
         }
         
-        // Use centralized UI enable/disable function
+        // Enable UI when any player unit is active, disable when enemy or no unit is active
         bool isPlayerActive = Unit.ActiveUnit is Player;
         SetUIEnabled(isPlayerActive);
     }
@@ -650,11 +695,70 @@ public class GameUI : MonoBehaviour
         SetUIEnabled(true);
     }
 
+    private void UpdatePlayerStatsDisplay()
+    {
+        // Always get the currently active player for stats display
+        Player activePlayer = Unit.ActiveUnit as Player;
+        if (activePlayer == null)
+        {
+            // If no active player, try to find any player
+            FindPlayerUnit();
+            if (playerUnit == null) return;
+            activePlayer = playerUnit;
+        }
+        else
+        {
+                    // Update our cached reference to the active player
+        playerUnit = activePlayer;
+    }
+    
+    // Update name display
+    if (nameText != null)
+    {
+        string characterName = activePlayer.GetCharacterName();
+        string characterType = activePlayer.GetCharacterType().ToString();
+        nameText.text = $"{characterName} ({characterType})";
+    }
+    
+    // Update attack display
+    if (attackText != null)
+    {
+        attackText.text = $"ATK: {activePlayer.attackDamage}";
+    }
+        
+        // Update speed display
+        if (speedText != null)
+        {
+            speedText.text = $"SPD: {activePlayer.speed}";
+        }
+        
+        // Update taunt/aggro display
+        if (tauntText != null)
+        {
+            // Get current aggro value (which may be modified by status effects)
+            int currentAggro = activePlayer.aggroValue;
+            
+            // Check if player has taunt effect to show it's boosted
+            bool hasTauntEffect = activePlayer.HasStatusEffect(typeof(TauntEffect));
+            
+            if (hasTauntEffect)
+            {
+                tauntText.text = $"TAUNT: {currentAggro} (BOOSTED)";
+                tauntText.color = Color.red; // Red color when boosted
+            }
+            else
+            {
+                tauntText.text = $"TAUNT: {currentAggro}";
+                tauntText.color = Color.white; // Normal color
+            }
+        }
+    }
+    
     private void UpdateSkillPointsDisplay()
     {
         if (gameManager == null) return;
         
-        // Update visual indicators using sprites
+        // Update visual indicators using sprites based on shared skill points
         if (skillPointIndicators != null)
         {
             int current = gameManager.GetCurrentSkillPoints();
@@ -667,4 +771,309 @@ public class GameUI : MonoBehaviour
             }
         }
     }
+    
+    #region Player Tooltip Methods
+    private void InitializeTooltip()
+    {
+        // Try to find tooltip components if not assigned
+        if (playerTooltip == null)
+        {
+            GameObject found = GameObject.Find("PlayerTooltip");
+            if (found != null)
+            {
+                playerTooltip = found;
+                Debug.Log("GameUI: Auto-found PlayerTooltip panel");
+            }
+        }
+        
+        if (tooltipText == null && playerTooltip != null)
+        {
+            tooltipText = playerTooltip.GetComponentInChildren<TextMeshProUGUI>();
+            if (tooltipText != null)
+            {
+                Debug.Log("GameUI: Auto-found tooltip text component");
+            }
+        }
+        
+        // Get rect transform and canvas
+        if (playerTooltip != null)
+        {
+            tooltipRect = playerTooltip.GetComponent<RectTransform>();
+            tooltipCanvas = GetComponentInParent<Canvas>();
+            
+            // Setup dynamic sizing
+            SetupTooltipDynamicSizing();
+            
+            // Ensure tooltip doesn't block raycasts
+            SetupTooltipRaycastBlocking();
+        }
+        
+        // Hide tooltip initially
+        ForceHideTooltip();
+        
+        // Check if everything is set up
+        if (playerTooltip == null || tooltipText == null)
+        {
+            Debug.LogWarning("GameUI: Missing tooltip components! Please assign them in the Inspector or create a 'PlayerTooltip' UI panel.");
+        }
+    }
+    
+    public void ShowPlayerTooltip(Player player)
+    {
+        if (playerTooltip == null || tooltipText == null || player == null)
+            return;
+        
+        // Set current player and reset hide timer
+        currentTooltipPlayer = player;
+        tooltipHideTimer = 0f;
+        
+        // Set tooltip text
+        string characterType = player.GetCharacterType().ToString();
+        int currentHealth = player.currentHealth;
+        int maxHealth = player.maxHealth;
+        int attackDamage = player.attackDamage;
+        int speed = player.speed;
+        int tauntValue = player.aggroValue;
+        
+        // Check if player has taunt effect
+        bool hasTauntEffect = player.HasStatusEffect(typeof(TauntEffect));
+        string tauntDisplay = hasTauntEffect ? $"{tauntValue} (BOOSTED)" : tauntValue.ToString();
+        
+        tooltipText.text = $"{characterType}\nHP: {currentHealth}/{maxHealth}\nATK: {attackDamage} | SPD: {speed}\nTAUNT: {tauntDisplay}";
+        
+        // Show tooltip
+        playerTooltip.SetActive(true);
+        isTooltipVisible = true;
+        
+        // Force layout update for dynamic sizing
+        ForceTooltipLayoutUpdate();
+        
+        // Update position
+        UpdateTooltipPosition();
+    }
+    
+    public void HidePlayerTooltip()
+    {
+        // Start hide timer instead of immediately hiding
+        tooltipHideTimer = TOOLTIP_HIDE_DELAY;
+    }
+    
+    private void ForceHideTooltip()
+    {
+        if (playerTooltip != null)
+        {
+            playerTooltip.SetActive(false);
+        }
+        isTooltipVisible = false;
+        currentTooltipPlayer = null;
+        tooltipHideTimer = 0f;
+    }
+    
+    private void UpdateTooltipPosition()
+    {
+        // Update tooltip position to follow mouse if visible
+        if (!isTooltipVisible || tooltipRect == null || tooltipCanvas == null)
+            return;
+        
+        // Get mouse position and add offset
+        Vector3 mousePosition = Input.mousePosition + tooltipOffset;
+        
+        // Convert to canvas position
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            tooltipCanvas.transform as RectTransform,
+            mousePosition,
+            null,
+            out Vector2 localPoint
+        );
+        
+        // Set position
+        tooltipRect.localPosition = localPoint;
+        
+        // Keep tooltip within canvas bounds
+        KeepTooltipInBounds();
+    }
+    
+    private void KeepTooltipInBounds()
+    {
+        if (tooltipRect == null || tooltipCanvas == null)
+            return;
+        
+        // Get canvas size
+        RectTransform canvasRect = tooltipCanvas.transform as RectTransform;
+        Vector2 canvasSize = canvasRect.sizeDelta;
+        
+        // Get current position and tooltip size
+        Vector2 tooltipPos = tooltipRect.localPosition;
+        Vector2 tooltipSize = tooltipRect.sizeDelta;
+        
+        // Adjust position to keep tooltip on screen
+        if (tooltipPos.x + tooltipSize.x > canvasSize.x / 2)
+        {
+            tooltipPos.x = canvasSize.x / 2 - tooltipSize.x - 10;
+        }
+        if (tooltipPos.y - tooltipSize.y < -canvasSize.y / 2)
+        {
+            tooltipPos.y = -canvasSize.y / 2 + tooltipSize.y + 10;
+        }
+        if (tooltipPos.x < -canvasSize.x / 2)
+        {
+            tooltipPos.x = -canvasSize.x / 2 + 10;
+        }
+        if (tooltipPos.y > canvasSize.y / 2)
+        {
+            tooltipPos.y = canvasSize.y / 2 - 10;
+        }
+        
+        tooltipRect.localPosition = tooltipPos;
+    }
+    
+    private void HandleTooltipVisibility()
+    {
+        if (!isTooltipVisible && tooltipHideTimer <= 0f)
+            return;
+        
+        // Handle hide timer
+        if (tooltipHideTimer > 0f)
+        {
+            tooltipHideTimer -= Time.deltaTime;
+            
+            // Check if mouse is still over the player before hiding
+            bool stillOverPlayer = IsMouseOverPlayer(currentTooltipPlayer);
+            
+            if (stillOverPlayer)
+            {
+                // Cancel hide timer - mouse is still over player
+                tooltipHideTimer = 0f;
+            }
+            else if (tooltipHideTimer <= 0f)
+            {
+                // Timer expired and mouse not over player - hide tooltip
+                ForceHideTooltip();
+            }
+        }
+    }
+    
+    private bool IsMouseOverPlayer(Player player)
+    {
+        if (player == null) return false;
+        
+        // Get mouse position in world space
+        Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        mousePos.z = 0;
+        
+        // Check if mouse is over the player's collider
+        Collider2D playerCollider = player.GetComponent<Collider2D>();
+        if (playerCollider != null)
+        {
+            return playerCollider.OverlapPoint(mousePos);
+        }
+        
+        // Fallback: distance check
+        float distance = Vector2.Distance(
+            new Vector2(mousePos.x, mousePos.y),
+            new Vector2(player.transform.position.x, player.transform.position.y)
+        );
+        
+        return distance < 0.75f; // Adjust threshold as needed
+    }
+    
+    private void SetupTooltipRaycastBlocking()
+    {
+        if (playerTooltip == null) return;
+        
+        // Add CanvasGroup to control raycast blocking
+        CanvasGroup canvasGroup = playerTooltip.GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+        {
+            canvasGroup = playerTooltip.AddComponent<CanvasGroup>();
+        }
+        canvasGroup.blocksRaycasts = false; // Don't block mouse events
+        
+        // Ensure all UI components don't block raycasts
+        UnityEngine.UI.Image[] images = playerTooltip.GetComponentsInChildren<UnityEngine.UI.Image>();
+        foreach (var image in images)
+        {
+            image.raycastTarget = false;
+        }
+        
+        TMPro.TextMeshProUGUI[] texts = playerTooltip.GetComponentsInChildren<TMPro.TextMeshProUGUI>();
+        foreach (var text in texts)
+        {
+            text.raycastTarget = false;
+        }
+    }
+    
+    private void SetupTooltipDynamicSizing()
+    {
+        if (playerTooltip == null || tooltipText == null) return;
+        
+        // Add ContentSizeFitter to the tooltip panel for dynamic width/height
+        ContentSizeFitter contentSizeFitter = playerTooltip.GetComponent<ContentSizeFitter>();
+        if (contentSizeFitter == null)
+        {
+            contentSizeFitter = playerTooltip.AddComponent<ContentSizeFitter>();
+        }
+        
+        // Set to fit content both horizontally and vertically
+        contentSizeFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        contentSizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        
+        // Add VerticalLayoutGroup if not present (helps with multi-line text sizing)
+        VerticalLayoutGroup verticalLayout = playerTooltip.GetComponent<VerticalLayoutGroup>();
+        if (verticalLayout == null)
+        {
+            verticalLayout = playerTooltip.AddComponent<VerticalLayoutGroup>();
+        }
+        
+        // Configure layout settings for proper padding
+        verticalLayout.padding = new RectOffset(10, 10, 10, 10); // Left, Right, Top, Bottom padding
+        verticalLayout.childAlignment = TextAnchor.MiddleCenter;
+        verticalLayout.childControlWidth = true;
+        verticalLayout.childControlHeight = true;
+        verticalLayout.childForceExpandWidth = false;
+        verticalLayout.childForceExpandHeight = false;
+        
+        // Ensure the text component has LayoutElement for proper sizing
+        LayoutElement textLayoutElement = tooltipText.GetComponent<LayoutElement>();
+        if (textLayoutElement == null)
+        {
+            textLayoutElement = tooltipText.gameObject.AddComponent<LayoutElement>();
+        }
+        
+        // Configure text layout
+        textLayoutElement.flexibleWidth = 1;
+        textLayoutElement.flexibleHeight = 1;
+        
+        // Set text component properties for better dynamic sizing
+        tooltipText.enableAutoSizing = false; // Disable auto-sizing to prevent conflicts
+        tooltipText.overflowMode = TextOverflowModes.Overflow; // Allow text to determine size
+        tooltipText.alignment = TextAlignmentOptions.Center;
+    }
+    
+    private void ForceTooltipLayoutUpdate()
+    {
+        if (playerTooltip == null) return;
+        
+        // Force immediate layout update
+        LayoutRebuilder.ForceRebuildLayoutImmediate(tooltipRect);
+        
+        // Also update the canvas to ensure everything is properly calculated
+        Canvas.ForceUpdateCanvases();
+        
+        // Small delay to ensure layout is fully calculated before positioning
+        StartCoroutine(DelayedPositionUpdate());
+    }
+    
+    private System.Collections.IEnumerator DelayedPositionUpdate()
+    {
+        // Wait one frame for layout to be fully calculated
+        yield return null;
+        
+        // Update position after layout is complete
+        if (isTooltipVisible)
+        {
+            UpdateTooltipPosition();
+        }
+    }
+    #endregion
 } 

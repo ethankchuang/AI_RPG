@@ -4,10 +4,14 @@ using UnityEngine;
 
 public class Enemy : Unit
 {
+    [Header("Enemy Data")]
+    public EnemyData enemyData;
+    
+    [Header("AI Settings")]
     private Coroutine movementCoroutine;
     private float attackDelay = 0.5f;
     private EnemyHealthDisplay healthDisplay;
-
+    
     protected override void Awake()
     {
         base.Awake();
@@ -15,6 +19,20 @@ public class Enemy : Unit
     
     public override void Start()
     {
+        // Apply enemy data if available
+        if (enemyData != null)
+        {
+            ApplyEnemyData();
+        }
+        else
+        {
+            // Set default values if no enemy data
+            maxHealth = 20;
+            attackDamage = 5;
+            speed = 15;
+            movementRange = 3;
+        }
+        
         base.Start();
         
         // Ensure health is properly initialized
@@ -90,24 +108,13 @@ public class Enemy : Unit
     // Coroutine to handle enemy turn execution
     private IEnumerator ExecuteTurnCoroutine()
     {
-        // Wait a moment before moving
+        // Wait a moment before acting
         yield return new WaitForSeconds(0.5f);
         
-        // Find the player
-        Player player = FindPlayer();
-        if (player == null)
-        {
-            hasMoved = true;
-            hasAttacked = true;
-            movementCoroutine = null;
-            yield break;
-        }
-        
-        // Get our current tile and player's tile
+        // Get our current tile
         UpdateCurrentTile();
-        player.UpdateCurrentTile();
         
-        if (currentTile == null || player.CurrentTile == null)
+        if (currentTile == null)
         {
             hasMoved = true;
             hasAttacked = true;
@@ -115,50 +122,120 @@ public class Enemy : Unit
             yield break;
         }
         
-        bool isAdjacent = IsAdjacentToTile(player.CurrentTile) && currentTile != player.CurrentTile;
-        
-        if (isAdjacent)
+        // First check if we can attack any player (prioritize attacking)
+        Player attackablePlayer = FindAttackablePlayer();
+        if (attackablePlayer != null)
         {
-            // Attack if adjacent
-            yield return StartCoroutine(AttackPlayer(player));
+            // Attack and end turn
+            yield return StartCoroutine(AttackPlayer(attackablePlayer));
             hasMoved = true;
             hasAttacked = true;
         }
         else
         {
-            // Try to move towards player
-            yield return StartCoroutine(MoveTowardsPlayer(player));
-            
-            // After moving, check if we're now adjacent to player for attack
-            yield return new WaitForSeconds(0.2f);
-            UpdateCurrentTile();
-            
-            if (IsAdjacentToTile(player.CurrentTile) && currentTile != player.CurrentTile)
+            // No attack available, find target using aggro-based targeting
+            Player targetPlayer = FindPlayerByAggro();
+            if (targetPlayer == null)
             {
-                yield return StartCoroutine(AttackPlayer(player));
+                hasMoved = true;
+                hasAttacked = true;
+                movementCoroutine = null;
+                yield break;
             }
             
-            // Always mark both as true to end the turn
+            // Move towards the aggro-selected target
+            yield return StartCoroutine(MoveTowardsPlayer(targetPlayer));
             hasMoved = true;
+            
+            // After moving, check again if we can now attack any player
+            attackablePlayer = FindAttackablePlayer();
+            if (attackablePlayer != null)
+            {
+                yield return StartCoroutine(AttackPlayer(attackablePlayer));
+            }
             hasAttacked = true;
         }
         
         movementCoroutine = null;
     }
     
-    // Find the player unit
-    private Player FindPlayer()
+    // Find the best target player using aggro-based targeting
+    private Player FindPlayerByAggro()
     {
-        // First check active unit
-        if (Unit.ActiveUnit is Player player)
-            return player;
+        // Get all alive players
+        Player[] allPlayers = Object.FindObjectsOfType<Player>();
+        List<Player> alivePlayers = new List<Player>();
+        
+        foreach (Player player in allPlayers)
+        {
+            if (player.currentHealth > 0)
+            {
+                alivePlayers.Add(player);
+            }
+        }
+        
+        if (alivePlayers.Count == 0) return null;
+        if (alivePlayers.Count == 1) return alivePlayers[0];
+        
+        // Use weighted random selection based on aggro values
+        return SelectPlayerByAggro(alivePlayers);
+    }
+    
+    // Select a player based on their aggro values using weighted random selection
+    private Player SelectPlayerByAggro(List<Player> players)
+    {
+        // Calculate weights based on aggro values
+        List<float> weights = new List<float>();
+        float totalWeight = 0f;
+        
+        foreach (Player player in players)
+        {
+            // Use aggro value as weight (higher aggro = more likely to be targeted)
+            float weight = player.aggroValue;
+            weights.Add(weight);
+            totalWeight += weight;
+        }
+        
+        // Generate random number between 0 and total weight
+        float randomValue = Random.Range(0f, totalWeight);
+        
+        // Find which player the random value lands on
+        float currentWeight = 0f;
+        for (int i = 0; i < players.Count; i++)
+        {
+            currentWeight += weights[i];
+            if (randomValue <= currentWeight)
+            {
+                return players[i];
+            }
+        }
+        
+        // Fallback to last player (shouldn't happen)
+        return players[players.Count - 1];
+    }
+
+    // Find any player that can be attacked (adjacent) - uses aggro for selection if multiple
+    private Player FindAttackablePlayer()
+    {
+        Player[] allPlayers = Object.FindObjectsOfType<Player>();
+        List<Player> attackablePlayers = new List<Player>();
+        
+        foreach (Player player in allPlayers)
+        {
+            if (player.currentHealth <= 0) continue; // Skip dead players
             
-        // Fall back to finding any player in the scene
-        Player[] players = Object.FindObjectsOfType<Player>();
-        if (players.Length > 0)
-            return players[0];
-            
-        return null;
+            player.UpdateCurrentTile();
+            if (player.CurrentTile != null && IsAdjacentToTile(player.CurrentTile))
+            {
+                attackablePlayers.Add(player);
+            }
+        }
+        
+        if (attackablePlayers.Count == 0) return null;
+        if (attackablePlayers.Count == 1) return attackablePlayers[0];
+        
+        // Multiple players can be attacked - use aggro to choose
+        return SelectPlayerByAggro(attackablePlayers);
     }
     
     // Check if this enemy is adjacent to a specific tile
@@ -506,5 +583,57 @@ public class Enemy : Unit
         hasMoved = true;
         
         //Debug.Log($"{gameObject.name}: Movement complete. Remaining MP: {remainingMovementPoints}");
+    }
+    
+    // Apply enemy data to this enemy
+    public void ApplyEnemyData()
+    {
+        if (enemyData == null) return;
+        
+        // Apply base stats
+        maxHealth = enemyData.maxHealth;
+        currentHealth = maxHealth;
+        attackDamage = enemyData.attackDamage;
+        speed = enemyData.speed;
+        movementRange = enemyData.movementRange;
+        
+        // Apply visual settings
+        if (spriteRenderer != null)
+        {
+            if (enemyData.enemySprite != null)
+                spriteRenderer.sprite = enemyData.enemySprite;
+            
+            spriteRenderer.color = enemyData.enemyColor;
+        }
+        
+        // Update game object name for easier identification
+        gameObject.name = $"Enemy_{enemyData.enemyName}";
+    }
+    
+    // Get enemy type for UI and other systems
+    public EnemyType GetEnemyType()
+    {
+        return enemyData != null ? enemyData.enemyType : EnemyType.Light;
+    }
+    
+    // Get enemy name for UI
+    public string GetEnemyName()
+    {
+        return enemyData != null ? enemyData.enemyName : "Unknown Enemy";
+    }
+    
+    // Get enemy description for UI
+    public string GetEnemyDescription()
+    {
+        return enemyData != null ? enemyData.description : "A mysterious foe.";
+    }
+    
+    // Check if this enemy should use special attack
+    private bool ShouldUseSpecialAttack()
+    {
+        if (enemyData == null || enemyData.specialAttack == null)
+            return false;
+            
+        return Random.value < enemyData.specialAttackChance;
     }
 }

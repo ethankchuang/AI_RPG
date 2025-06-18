@@ -77,6 +77,9 @@ public class CombatUI : MonoBehaviour
         
         // Update skill points display
         UpdateSkillPointsDisplay();
+        
+        // Update button text with attack names
+        UpdateAttackButtonText();
     }
     
     private void UpdateButtonStates()
@@ -114,7 +117,7 @@ public class CombatUI : MonoBehaviour
     {
         if (gameManager == null) return;
         
-        // Update visual indicators using sprites
+        // Update visual indicators using sprites based on shared skill points
         if (skillPointIndicators != null)
         {
             int current = gameManager.GetCurrentSkillPoints();
@@ -124,6 +127,73 @@ public class CombatUI : MonoBehaviour
             {
                 GameObject indicator = skillPointIndicators.GetChild(i).gameObject;
                 indicator.SetActive(i < current);
+            }
+        }
+    }
+    
+    // Update attack button text with actual attack names
+    private void UpdateAttackButtonText()
+    {
+        if (Unit.ActiveUnit is Player player)
+        {
+            // Update basic attack button
+            if (basicAttackButton != null && player.basicAttack != null)
+            {
+                TextMeshProUGUI buttonText = basicAttackButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = $"{player.basicAttack.attackName} (Free)";
+                }
+            }
+            
+            // Update skill 1 button
+            if (skill1Button != null && player.skill1 != null)
+            {
+                TextMeshProUGUI buttonText = skill1Button.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = $"{player.skill1.attackName} ({player.skill1.SPCost} SP)";
+                }
+            }
+            
+            // Update skill 2 button
+            if (skill2Button != null && player.skill2 != null)
+            {
+                TextMeshProUGUI buttonText = skill2Button.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = $"{player.skill2.attackName} ({player.skill2.SPCost} SP)";
+                }
+            }
+        }
+        else
+        {
+            // Reset to default text if no active player
+            if (basicAttackButton != null)
+            {
+                TextMeshProUGUI buttonText = basicAttackButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = "Basic Attack";
+                }
+            }
+            
+            if (skill1Button != null)
+            {
+                TextMeshProUGUI buttonText = skill1Button.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = "Skill 1";
+                }
+            }
+            
+            if (skill2Button != null)
+            {
+                TextMeshProUGUI buttonText = skill2Button.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = "Skill 2";
+                }
             }
         }
     }

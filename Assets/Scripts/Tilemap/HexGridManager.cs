@@ -191,18 +191,19 @@ public class HexGridManager : MonoBehaviour
         // Clear any existing path without resetting movement range tiles
         ClearPath();
         
-        // Validate player unit state
-        if (playerUnit == null)
+        // Get the currently active player
+        Player activePlayer = Unit.ActiveUnit as Player;
+        if (activePlayer == null)
             return;
         
         // Only show path if in move mode
-        if (!playerUnit.IsInMoveMode || playerUnit.remainingMovementPoints <= 0)
+        if (!activePlayer.IsInMoveMode || activePlayer.remainingMovementPoints <= 0)
         {
             return;
         }
         
-        // Find the current tile of the player unit
-        HexTile startTile = GetTileAtPosition(playerUnit.transform.position);
+        // Find the current tile of the active player unit
+        HexTile startTile = GetTileAtPosition(activePlayer.transform.position);
         if (startTile == null)
             return;
         
@@ -220,7 +221,7 @@ public class HexGridManager : MonoBehaviour
             currentPath = path;
             
             // Check if path is within movement range
-            bool isWithinRange = path.Count - 1 <= playerUnit.remainingMovementPoints;
+            bool isWithinRange = path.Count - 1 <= activePlayer.remainingMovementPoints;
             bool isValidDestination = targetTile.isWalkable && !IsUnitOnTile(targetTile);
             bool isPathValid = isWithinRange && isValidDestination;
             
@@ -247,18 +248,20 @@ public class HexGridManager : MonoBehaviour
         if (gameManager == null)
             return;
         
-        // Check if it's player turn and we have a player unit
-        if (gameManager.CurrentState != GameState.PlayerTurn)
+        // Check if game is in progress and we have an active player unit
+        if (gameManager.CurrentState != GameState.InProgress)
             return;
         
-        if (playerUnit == null)
+        // Get the currently active player (not just the fixed playerUnit reference)
+        Player activePlayer = Unit.ActiveUnit as Player;
+        if (activePlayer == null)
             return;
         
         // Check if player is in move mode and has movement points
-        if (!playerUnit.IsInMoveMode)
+        if (!activePlayer.IsInMoveMode)
             return;
         
-        if (playerUnit.remainingMovementPoints <= 0)
+        if (activePlayer.remainingMovementPoints <= 0)
             return;
         
         // Skip unwalkable tiles or tiles with units
@@ -274,8 +277,8 @@ public class HexGridManager : MonoBehaviour
             return;
         }
         
-        // Get current tile of the player unit
-        HexTile startTile = GetTileAtPosition(playerUnit.transform.position);
+        // Get current tile of the active player unit
+        HexTile startTile = GetTileAtPosition(activePlayer.transform.position);
         if (startTile == null)
             return;
         
@@ -293,7 +296,7 @@ public class HexGridManager : MonoBehaviour
         }
         
         // Check if path is within movement range
-        if (path.Count - 1 > playerUnit.remainingMovementPoints)
+        if (path.Count - 1 > activePlayer.remainingMovementPoints)
         {
             // Show invalid path
             foreach (HexTile tile in path)
@@ -306,7 +309,7 @@ public class HexGridManager : MonoBehaviour
         
         // Path is valid - clear visuals and execute movement
         ClearPath();
-        playerUnit.MoveAlongPath(path);
+        activePlayer.MoveAlongPath(path);
     }
     
     // Clear the current path
@@ -314,10 +317,13 @@ public class HexGridManager : MonoBehaviour
     {
         foreach (HexTile tile in currentPath)
         {
-            // Only reset if it's not in player's highlighted movement range
-            bool isInMovementRange = playerUnit != null && 
-                                   playerUnit.highlightedTiles != null && 
-                                   playerUnit.highlightedTiles.Contains(tile);
+            // Get the currently active player
+            Player activePlayer = Unit.ActiveUnit as Player;
+            
+            // Only reset if it's not in active player's highlighted movement range
+            bool isInMovementRange = activePlayer != null && 
+                                   activePlayer.highlightedTiles != null && 
+                                   activePlayer.highlightedTiles.Contains(tile);
             
             if (!isInMovementRange)
                 tile.ResetColor();
@@ -331,18 +337,21 @@ public class HexGridManager : MonoBehaviour
     // Reset all tiles in the grid
     private void ResetAllTiles()
     {
-        if (playerUnit == null || playerUnit.highlightedTiles == null)
+        // Get the currently active player
+        Player activePlayer = Unit.ActiveUnit as Player;
+        
+        if (activePlayer == null || activePlayer.highlightedTiles == null)
         {
-            // If player is not available, reset all tiles
+            // If active player is not available, reset all tiles
             foreach (HexTile tile in GetComponentsInChildren<HexTile>())
                 tile.ResetColor();
             return;
         }
         
-        // Otherwise, only reset tiles that are not part of the movement range
+        // Otherwise, only reset tiles that are not part of the active player's movement range
         foreach (HexTile tile in GetComponentsInChildren<HexTile>())
         {
-            if (!playerUnit.highlightedTiles.Contains(tile))
+            if (!activePlayer.highlightedTiles.Contains(tile))
                 tile.ResetColor();
         }
     }
