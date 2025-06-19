@@ -12,16 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5cd3742fadb6440448226500aaa0f985, type: 3}
   m_Name: HeavyEnemy
   m_EditorClassIdentifier: 
-  enemyType: 0
+  enemyType: 2
   enemyName: 
   description: 
   enemySprite: {fileID: 0}
-  maxHealth: 20
+  maxHealth: 60
   attackDamage: 5
-  speed: 15
-  movementRange: 3
-  aggressiveness: 1
-  detectionRange: 4
-  enemyColor: {r: 1, g: 0, b: 0, a: 1}
-  specialAttack: {fileID: 0}
+  speed: 5
+  movementRange: 2
+  enemyColor: {r: 0.3962264, g: 0, b: 0, a: 1}
+  specialAttack: {fileID: 11400000, guid: 6f75ccf472fd30e48a9dc69ce38b5e19, type: 2}
   specialAttackChance: 0.2

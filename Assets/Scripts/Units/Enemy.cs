@@ -284,13 +284,21 @@ public class Enemy : Unit
         
         for (int i = 1; i < path.Count - 1; i++) // Skip the last tile (player's tile)
         {
-            // Only add unoccupied tiles to the valid path
-            if (!gridManager.IsUnitOnTile(path[i]))
+            // Check what type of unit is on this tile
+            Unit unitOnTile = gridManager.GetUnitOnTile(path[i]);
+            if (unitOnTile == null)
             {
+                // Tile is unoccupied, add it to valid path
+                validPath.Add(path[i]);
+            }
+            else if (unitOnTile is Enemy)
+            {
+                // Can move through other enemies, add it to valid path
                 validPath.Add(path[i]);
             }
             else
             {
+                // Can't move through players, stop here
                 break;
             }
         }
@@ -383,15 +391,43 @@ public class Enemy : Unit
                 if (!neighbor.isWalkable)
                     continue;
                 
-                // Skip occupied tiles (except the destination)
+                // Allow movement through players, but not through other enemies (except the destination)
                 if (neighbor != end)
                 {
-                    bool isOccupied = gridManager != null ? 
-                        gridManager.IsUnitOnTile(neighbor) : 
-                        IsUnitOnTileFallback(neighbor);
+                    Unit unitOnTile = null;
+                    if (gridManager != null)
+                    {
+                        unitOnTile = gridManager.GetUnitOnTile(neighbor);
+                    }
+                    else
+                    {
+                        // Fallback unit detection
+                        foreach (Unit unit in Object.FindObjectsOfType<Unit>())
+                        {
+                            if (unit == this) continue; // Skip self
+                            
+                            float unitDistance = Vector2.Distance(
+                                new Vector2(neighbor.transform.position.x, neighbor.transform.position.y),
+                                new Vector2(unit.transform.position.x, unit.transform.position.y)
+                            );
+                            
+                            if (unitDistance < 0.5f)
+                            {
+                                unitOnTile = unit;
+                                break;
+                            }
+                        }
+                    }
                     
-                    if (isOccupied)
-                        continue;
+                    if (unitOnTile != null)
+                    {
+                        // Block movement through players, but allow movement through other enemies
+                        if (unitOnTile is Player)
+                        {
+                            continue; // Block pathfinding through players
+                        }
+                        // If it's another enemy, allow pathfinding through (but can't land on them)
+                    }
                 }
                 
                 // Calculate new distance - each step costs 1
@@ -526,16 +562,27 @@ public class Enemy : Unit
             // Get the next tile in the path
             HexTile nextTile = path[i];
             
-            // Double-check that the tile is still unoccupied before moving
-            bool isOccupied = gridManager != null ? 
-                gridManager.IsUnitOnTile(nextTile) : 
-                IsUnitOnTileFallback(nextTile);
+            // Check if we can move to this tile
+            // Enemies can pass through other enemies but not through players
+            Unit unitOnTile = gridManager != null ? 
+                gridManager.GetUnitOnTile(nextTile) : 
+                null;
                 
-            if (isOccupied)
+            // If this is the final destination tile and it has any unit, stop
+            if (i == path.Count - 1 && unitOnTile != null)
             {
-                //Debug.Log($"{gameObject.name}: Tile {i} is occupied, stopping movement");
+                //Debug.Log($"{gameObject.name}: Final destination tile {i} is occupied, stopping movement");
                 break; // Stop the path here
             }
+            
+            // If this is not the final tile but has a player, stop (can't pass through players)
+            if (i != path.Count - 1 && unitOnTile != null && unitOnTile is Player)
+            {
+                //Debug.Log($"{gameObject.name}: Tile {i} has player, stopping movement");
+                break; // Stop the path here
+            }
+            
+            // If it's another enemy tile and not the final destination, we can pass through
             
             // Calculate positions
             Vector3 startPos = transform.position;

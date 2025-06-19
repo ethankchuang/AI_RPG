@@ -13,10 +13,13 @@ MonoBehaviour:
   m_Name: Fireball
   m_EditorClassIdentifier: 
   attackName: Fireball
-  description: A magical attack that deals fire damage with long range.
-  damage: 12
-  range: 3
+  description: A magical attack that deals fire damage based on your attack stat
+    with long range.
+  damageMultiplier: 1.3
+  baseDamage: 2
+  range: 6
   SPCost: 2
+  requiresTarget: 1
   icon: {fileID: 0}
   vfxPrefab: {fileID: 0}
   effects: []

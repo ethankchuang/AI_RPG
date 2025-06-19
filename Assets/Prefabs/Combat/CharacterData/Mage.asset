@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: Mage
   m_EditorClassIdentifier: 
   characterType: 2
-  characterName: 
+  characterName: Jaina
   description: 
   characterSprite: {fileID: 0}
-  maxHealth: 20
+  maxHealth: 30
   attackDamage: 10
   speed: 20
   movementRange: 4
@@ -24,4 +24,4 @@ MonoBehaviour:
   skill1: {fileID: 11400000, guid: cd53faef5f199db47b2261411ca57491, type: 2}
   skill2: {fileID: 11400000, guid: 46071258aa01cb24db1ea43fbcd6db4b, type: 2}
   characterColor: {r: 0.8818307, g: 0, b: 1, a: 1}
-  aggroValue: 1
+  aggroValue: 2

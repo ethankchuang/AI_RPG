@@ -271,6 +271,7 @@ public class HexGridManager : MonoBehaviour
             return;
         }
         
+        // Still prevent landing on any unit (players or enemies)
         if (IsUnitOnTile(targetTile))
         {
             targetTile.FlashColor(targetTile.invalidColor, 0.3f);
@@ -425,9 +426,22 @@ public class HexGridManager : MonoBehaviour
                 if (!neighbor.isWalkable)
                     continue;
                 
-                // Skip tiles that have units on them (except for the destination)
+                // Allow movement through other players, but not landing on them
                 if (neighbor != end && IsUnitOnTile(neighbor))
-                    continue;
+                {
+                    // Check if the unit on this tile is a player
+                    Unit unitOnTile = GetUnitOnTile(neighbor);
+                    if (unitOnTile != null && unitOnTile is Player)
+                    {
+                        // Allow pathfinding through player tiles (but can't land on them)
+                        // Continue with pathfinding to allow passing through
+                    }
+                    else
+                    {
+                        // Block pathfinding through non-player units (enemies)
+                        continue;
+                    }
+                }
                 
                 // Record where we came from
                 previous[neighbor] = current;
@@ -687,13 +701,16 @@ public class HexGridManager : MonoBehaviour
         if (tile == null) return null;
         
         // Check all units in the game
-        foreach (Unit unit in GameManager.Instance.GetAllUnits())
+        foreach (Unit unit in FindObjectsOfType<Unit>())
         {
-            // If the unit's position is very close to the tile's position, it's on that tile
-            if (Vector2.Distance(unit.transform.position, tile.transform.position) < 0.1f)
-            {
+            float distance = Vector2.Distance(
+                new Vector2(tile.transform.position.x, tile.transform.position.y),
+                new Vector2(unit.transform.position.x, unit.transform.position.y)
+            );
+            
+            // If the unit is close enough to this tile, consider it "on" this tile
+            if (distance < 0.5f)
                 return unit;
-            }
         }
         
         return null;
