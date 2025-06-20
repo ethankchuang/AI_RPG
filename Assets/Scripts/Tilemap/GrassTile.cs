@@ -18,7 +18,7 @@ public class GrassTile : HexTile
     {
         if (spriteRenderer != null)
         {
-            defaultColor = new Color(1f, 1f, 1f); //  white
+            defaultColor = new Color(0.2f, 0.8f, 0.2f); // Green color
             spriteRenderer.color = defaultColor;
         }
     }

@@ -18,7 +18,8 @@ public class WallTile : HexTile
     {
         if (spriteRenderer != null)
         {
-            defaultColor = new Color(0.3f, 0.3f, 0.3f); // Dark gray
+            // Set wall color to dark gray
+            defaultColor = new Color(0.3f, 0.3f, 0.3f);
             spriteRenderer.color = defaultColor;
         }
     }

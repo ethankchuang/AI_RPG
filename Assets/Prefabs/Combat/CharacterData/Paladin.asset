@@ -13,15 +13,15 @@ MonoBehaviour:
   m_Name: Paladin
   m_EditorClassIdentifier: 
   characterType: 3
-  characterName: 
+  characterName: Uther
   description: 
   characterSprite: {fileID: 0}
-  maxHealth: 35
+  maxHealth: 50
   attackDamage: 5
   speed: 15
   movementRange: 5
   basicAttack: {fileID: 11400000, guid: f85be63c860309a4aaf3562d63edfd51, type: 2}
   skill1: {fileID: 11400000, guid: ee38d8a82f1b61c4580ca7eed0b1fd7f, type: 2}
-  skill2: {fileID: 11400000, guid: 5abcb50a9d1de9e4aa67b3b8bba6d9f3, type: 2}
+  skill2: {fileID: 11400000, guid: 821e349d8af267343bde5ecc32855795, type: 2}
   characterColor: {r: 0.99178326, g: 1, b: 0, a: 1}
-  aggroValue: 1
+  aggroValue: 4

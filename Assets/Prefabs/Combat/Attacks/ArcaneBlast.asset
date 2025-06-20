@@ -13,10 +13,13 @@ MonoBehaviour:
   m_Name: ArcaneBlast
   m_EditorClassIdentifier: 
   attackName: Arcane Blast
-  description: A precise magical attack that pierces through defenses.
-  damage: 9
-  range: 2
+  description: A precise magical attack that deals damage based on your attack stat
+    and pierces through defenses.
+  damageMultiplier: 1.1
+  baseDamage: 1
+  range: 5
   SPCost: 1
+  requiresTarget: 1
   icon: {fileID: 0}
   vfxPrefab: {fileID: 0}
   effects: []

@@ -310,11 +310,7 @@ public class GameManager : MonoBehaviour
         else if (genericUnits.Contains(unit))
             genericUnits.Remove(unit);
         
-        // Check win conditions
-        if (playerUnits.Count == 0)
-            SetGameState(GameState.Defeat);
-        else if (enemyUnits.Count == 0)
-            SetGameState(GameState.Victory);
+        // Note: Win condition checking is now handled by CheckBattleEndConditions() in OnUnitDeath()
     }
     
     // Place initial units for player or enemy
@@ -525,11 +521,35 @@ public class GameManager : MonoBehaviour
     // Handle victory
     private void HandleVictory()
     {
+        Debug.Log("Victory! All enemies defeated!");
+        
+        // Find and show victory screen
+        BattleResultUI battleResultUI = FindObjectOfType<BattleResultUI>();
+        if (battleResultUI != null)
+        {
+            battleResultUI.ShowVictoryScreen();
+        }
+        else
+        {
+            Debug.LogWarning("BattleResultUI not found! Cannot show victory screen.");
+        }
     }
     
     // Handle defeat
     private void HandleDefeat()
     {
+        Debug.Log("Defeat! All players defeated!");
+        
+        // Find and show defeat screen
+        BattleResultUI battleResultUI = FindObjectOfType<BattleResultUI>();
+        if (battleResultUI != null)
+        {
+            battleResultUI.ShowDefeatScreen();
+        }
+        else
+        {
+            Debug.LogWarning("BattleResultUI not found! Cannot show defeat screen.");
+        }
     }
     #endregion
     
@@ -778,13 +798,59 @@ public class GameManager : MonoBehaviour
     
     public void OnUnitDeath(Unit unit)
     {
-        // Remove the unit from the list
+        // Remove the unit from the appropriate lists
         allUnits.Remove(unit);
+        
+        if (unit is Player)
+        {
+            playerUnits.Remove(unit as Player);
+            Debug.Log($"Player {unit.name} died. Remaining players: {playerUnits.Count}");
+        }
+        else if (unit is Enemy)
+        {
+            enemyUnits.Remove(unit as Enemy);
+            Debug.Log($"Enemy {unit.name} died. Remaining enemies: {enemyUnits.Count}");
+        }
         
         // If it was the current active unit, end the turn
         if (unit == currentActiveUnit)
         {
             EndCurrentTurn();
+        }
+        
+        // Check win/loss conditions after removing the unit
+        CheckBattleEndConditions();
+    }
+    
+    private void CheckBattleEndConditions()
+    {
+        // Don't check conditions if game is already over
+        if (CurrentState == GameState.Victory || CurrentState == GameState.Defeat)
+            return;
+            
+        // Count living units of each type
+        int livingPlayers = 0;
+        int livingEnemies = 0;
+        
+        foreach (Unit unit in allUnits)
+        {
+            if (unit is Player)
+                livingPlayers++;
+            else if (unit is Enemy)
+                livingEnemies++;
+        }
+        
+        // Check victory condition (all enemies dead)
+        if (livingEnemies == 0 && livingPlayers > 0)
+        {
+            SetGameState(GameState.Victory);
+            HandleVictory();
+        }
+        // Check defeat condition (all players dead)
+        else if (livingPlayers == 0)
+        {
+            SetGameState(GameState.Defeat);
+            HandleDefeat();
         }
     }
 } 

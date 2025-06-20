@@ -271,5 +271,6 @@ public enum TileType
     Forest,
     Desert,
     Snow,
-    Wall
+    Wall,
+    Mud
 }

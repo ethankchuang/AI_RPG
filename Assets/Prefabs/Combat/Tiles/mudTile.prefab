@@ -10,10 +10,10 @@ GameObject:
   m_Component:
   - component: {fileID: 8386559819338708076}
   - component: {fileID: 3751578348123514217}
-  - component: {fileID: 2154205107527157510}
   - component: {fileID: 1040633741782948970}
+  - component: {fileID: 1101859504536598405}
   m_Layer: 0
-  m_Name: basicTile
+  m_Name: mudTile
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -76,7 +76,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_Sprite: {fileID: 2747690628134850419, guid: b670ab75dde984907b8570040daa08c5, type: 3}
-  m_Color: {r: 0.5797302, g: 0.8396226, b: 0.5505073, a: 1}
+  m_Color: {r: 0.6, g: 0.40000004, b: 0.20000002, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -86,34 +86,6 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
---- !u!114 &2154205107527157510
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 296930065897047845}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4dcbdabe1839128418e8a84feef95b25, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  column: 0
-  row: 0
-  cubeCoords:
-    q: 0
-    r: 0
-    s: 0
-  tileType: 0
-  isWalkable: 1
-  movementCost: 1
-  spriteRenderer: {fileID: 0}
-  defaultColor: {r: 0.5803922, g: 0.83921576, b: 0.54901963, a: 1}
-  invalidColor: {r: 1, g: 0, b: 0, a: 1}
-  pathColor: {r: 0, g: 1, b: 1, a: 1}
-  movementRangeColor: {r: 1, g: 0.8745156, b: 0.3820755, a: 1}
-  neighbors: []
-  isPartOfPath: 0
 --- !u!60 &1040633741782948970
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -145,3 +117,32 @@ PolygonCollider2D:
       - {x: 0.25, y: -0.43359375}
       - {x: 0.5, y: 0}
       - {x: 0.25, y: 0.43359375}
+--- !u!114 &1101859504536598405
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 296930065897047845}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ef4f2854af5370a4e824b16ee824e5b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  column: 0
+  row: 0
+  cubeCoords:
+    q: 0
+    r: 0
+    s: 0
+  tileType: 7
+  isWalkable: 1
+  movementCost: 2
+  spriteRenderer: {fileID: 0}
+  defaultColor: {r: 0.6, g: 0.40000004, b: 0.20000002, a: 1}
+  invalidColor: {r: 1, g: 0, b: 0, a: 1}
+  pathColor: {r: 0, g: 1, b: 1, a: 1}
+  movementRangeColor: {r: 0, g: 1, b: 0, a: 1}
+  neighbors: []
+  isPartOfPath: 0
+  mudColor: {r: 0.6, g: 0.4, b: 0.2, a: 1}

@@ -231,12 +231,17 @@ public class Player : Unit
             // Skip if tile is null or destroyed
             if (tile == null) continue;
             
-            // Only highlight walkable and unoccupied tiles
-            bool isOccupied = false;
+            // Check if tile can be a valid destination
+            bool canLandOnTile = true;
             
             if (gridManager != null)
             {
-                isOccupied = gridManager.IsUnitOnTile(tile);
+                Unit unitOnTile = gridManager.GetUnitOnTile(tile);
+                if (unitOnTile != null)
+                {
+                    // Can't land on any unit (players or enemies)
+                    canLandOnTile = false;
+                }
             }
             else
             {
@@ -252,14 +257,14 @@ public class Player : Unit
                     
                     if (distance < 0.5f)
                     {
-                        isOccupied = true;
+                        canLandOnTile = false;
                         break;
                     }
                 }
             }
             
-            // Only highlight if the tile is walkable, unoccupied, and we can find a valid path to it
-            if (tile.isWalkable && !isOccupied)
+            // Only highlight if the tile is walkable, can be landed on, and we can find a valid path to it
+            if (tile.isWalkable && canLandOnTile)
             {
                 // Check if we can find a valid path to this tile
                 List<HexTile> path = gridManager.CalculatePath(currentTile, tile);
