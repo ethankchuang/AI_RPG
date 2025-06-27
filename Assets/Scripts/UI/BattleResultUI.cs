@@ -15,6 +15,7 @@ public class BattleResultUI : MonoBehaviour
     public Button victoryRestartButton;
     public Button victoryMainMenuButton;
     public Button victoryNextLevelButton; // Optional for future levels
+    public Button victoryReturnToChatButton; // New button to return to chat
     
     [Header("Defeat Panel Buttons")]
     public Button defeatRestartButton;
@@ -72,6 +73,17 @@ public class BattleResultUI : MonoBehaviour
             EnableGameUI(); // Re-enable game UI when hiding panels
         }
         #endif
+        
+        // Keyboard shortcuts for battle results
+        if (Input.GetKeyDown(KeyCode.C))
+        {
+            // Return to chat (only if victory screen is showing)
+            if (victoryPanel != null && victoryPanel.activeInHierarchy)
+            {
+                Debug.Log("Returning to chat (pressed C)");
+                ReturnToChat();
+            }
+        }
     }
     
     private void SetupButtonListeners()
@@ -85,6 +97,9 @@ public class BattleResultUI : MonoBehaviour
             
         if (victoryNextLevelButton != null)
             victoryNextLevelButton.onClick.AddListener(LoadNextLevel);
+            
+        if (victoryReturnToChatButton != null)
+            victoryReturnToChatButton.onClick.AddListener(ReturnToChat);
         
         // Defeat buttons
         if (defeatRestartButton != null)
@@ -225,5 +240,11 @@ public class BattleResultUI : MonoBehaviour
         // Load next level (implement based on your level system)
         Debug.Log("Loading next level...");
         // SceneManager.LoadScene("NextLevelSceneName");
+    }
+    
+    private void ReturnToChat()
+    {
+        // Load the Chat scene
+        SceneManager.LoadScene("Chat");
     }
 } 

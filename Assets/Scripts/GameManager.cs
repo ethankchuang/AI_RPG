@@ -143,9 +143,18 @@ public class GameManager : MonoBehaviour
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            Debug.Log("GameManager: Initialized as singleton");
         }
         else
         {
+            Debug.Log("GameManager: Another instance found, destroying duplicate");
+            // If we're destroying a duplicate, it means we're returning to combat
+            // Trigger reset on the persistent instance
+            if (Instance != this)
+            {
+                Debug.Log("GameManager: Triggering reset on persistent instance");
+                Instance.ResetGameState();
+            }
             Destroy(gameObject);
             return;
         }
@@ -166,6 +175,8 @@ public class GameManager : MonoBehaviour
     
     private void Start()
     {
+        Debug.Log("GameManager: Start() called");
+        
         // Setup camera bounds
         if (cameraFollow != null && gridGenerator != null)
         {
@@ -176,7 +187,7 @@ public class GameManager : MonoBehaviour
             );
         }
         
-        // Start in InitGame state
+        // Start in InitGame state for fresh game
         SetGameState(GameState.InitGame);
         
         // Find all units in the scene
@@ -184,6 +195,16 @@ public class GameManager : MonoBehaviour
         
         // Start the first turn using action value system
         StartNextTurn();
+    }
+    
+    private void Update()
+    {
+        // Check for tilde key (~) to automatically win the battle
+        if (Input.GetKeyDown(KeyCode.Tilde) || Input.GetKeyDown(KeyCode.BackQuote))
+        {
+            Debug.Log("Tilde key pressed - Auto-winning battle!");
+            ForceVictory();
+        }
     }
     #endregion
     
@@ -1119,5 +1140,116 @@ public class GameManager : MonoBehaviour
         }
         
         return null;
+    }
+    
+    // Force victory for debugging/testing purposes
+    public void ForceVictory()
+    {
+        if (CurrentState == GameState.InProgress)
+        {
+            Debug.Log("GameManager: Force victory triggered!");
+            SetGameState(GameState.Victory);
+            HandleVictory();
+        }
+    }
+
+    // Reset the game state when returning to combat
+    private void ResetGameState()
+    {
+        Debug.Log("GameManager: ResetGameState() called");
+        
+        // Clear all unit lists
+        playerUnits.Clear();
+        enemyUnits.Clear();
+        genericUnits.Clear();
+        allUnits.Clear();
+        Debug.Log("GameManager: Cleared all unit lists");
+        
+        // Reset static references
+        Unit.ActiveUnit = null;
+        Unit.LastActiveUnit = null;
+        Debug.Log("GameManager: Reset static unit references");
+        
+        // Reset game state
+        CurrentState = GameState.InitGame;
+        Debug.Log("GameManager: Reset game state to InitGame");
+        
+        // Reset skill points
+        ResetSkillPoints();
+        Debug.Log("GameManager: Reset skill points");
+        
+        // Regenerate the grid if needed
+        if (gridGenerator != null)
+        {
+            Debug.Log("GameManager: Regenerating grid");
+            gridGenerator.GenerateGrid();
+        }
+        else
+        {
+            Debug.Log("GameManager: gridGenerator is null!");
+        }
+        
+        // Regenerate random map if RandomMapGenerator exists
+        RandomMapGenerator mapGenerator = FindObjectOfType<RandomMapGenerator>();
+        if (mapGenerator != null)
+        {
+            Debug.Log("GameManager: Regenerating random map");
+            mapGenerator.GenerateRandomMap();
+        }
+        else
+        {
+            Debug.Log("GameManager: RandomMapGenerator not found");
+        }
+        
+        // Re-find references after grid regeneration
+        if (gridGenerator == null)
+        {
+            gridGenerator = FindObjectOfType<HexGridGenerator>();
+            Debug.Log($"GameManager: Re-found gridGenerator: {gridGenerator != null}");
+        }
+            
+        if (gridManager == null)
+        {
+            gridManager = FindObjectOfType<HexGridManager>();
+            Debug.Log($"GameManager: Re-found gridManager: {gridManager != null}");
+        }
+            
+        if (cameraFollow == null)
+        {
+            cameraFollow = FindObjectOfType<CameraFollow>();
+            Debug.Log($"GameManager: Re-found cameraFollow: {cameraFollow != null}");
+        }
+        
+        // Refresh tile neighbors after grid regeneration
+        if (gridManager != null)
+        {
+            Debug.Log("GameManager: Refreshing tile neighbors");
+            gridManager.RefreshTileNeighbors();
+        }
+        
+        // Setup camera bounds after grid regeneration
+        if (cameraFollow != null && gridGenerator != null)
+        {
+            Debug.Log("GameManager: Setting up camera bounds");
+            cameraFollow.SetBoundsFromGrid(
+                gridGenerator.gridWidth,
+                gridGenerator.gridHeight,
+                gridGenerator.hexRadius
+            );
+        }
+        
+        // Start fresh initialization
+        Debug.Log("GameManager: Starting fresh initialization");
+        SetGameState(GameState.InitGame);
+        
+        // Find all units in the scene
+        Debug.Log("GameManager: Finding all units");
+        FindAllUnits();
+        
+        // Start the first turn using action value system
+        Debug.Log("GameManager: Starting next turn");
+        StartNextTurn();
+        
+        Debug.Log("GameManager: ResetGameState() completed");
     }
 } 

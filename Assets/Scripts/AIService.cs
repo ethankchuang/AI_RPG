@@ -67,25 +67,14 @@ public class AIService : MonoBehaviour
     [Header("System Settings")]
     private string systemPrompt = @"You are the Narrator of a fantasy RPG. Focus on companion interactions and combat scenarios.
 
-RESPONSE FORMAT - Use this exact structure:
+RESPONSE FORMAT - Write brief, engaging narrative content:
 
-=== OPENING SCENE ===
-[1-2 sentences describing current setting]
+=== SCENE DESCRIPTION ===
+[Write 2-3 sentences describing what happens in the scene. Be concise but engaging.]
 
-=== COMPANION INTERACTION SUGGESTIONS ===
-Here are some things you could say to your companions:
-1. [Conversation idea for Paladin]
-2. [Conversation idea for Rogue]
-3. [Conversation idea for Mage]
-4. [Conversation idea for Warrior]
+PRIORITY: Focus 70% on companion interactions and combat scenarios, 30% on story progression. Combat can be spontaneous!
 
-=== COMBAT/ACTION SUGGESTIONS ===
-What would you like to do next?
-1. [Combat-focused action]
-2. [Companion-focused action]
-3. [Exploration action]
-
-PRIORITY: Focus 70% on companion interactions and combat scenarios, 30% on story progression. Combat can be spontaneous!";
+When generating action options, consider the current story context and provide specific, relevant choices that make sense for the immediate situation. Each option should be unique and meaningful to the player's current circumstances.";
     
     [Header("Conversation Management")]
     [SerializeField] private int maxConversationHistory = 20; // Maximum number of messages to keep in history

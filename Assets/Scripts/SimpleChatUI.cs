@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
 using System;
+using System.Linq;
 
 public class SimpleChatUI : MonoBehaviour
 {
@@ -12,7 +13,7 @@ public class SimpleChatUI : MonoBehaviour
     [SerializeField] private TMP_InputField inputField;
     [SerializeField] private ScrollRect chatScrollRect;
     [SerializeField] private Transform messageContainer;
-    [SerializeField] private Button backToGameButton;
+    [SerializeField] private Button nextButton;
     [SerializeField] private TextMeshProUGUI chatText; // Single text component for all messages
     
     [Header("Message Settings")]
@@ -27,7 +28,7 @@ public class SimpleChatUI : MonoBehaviour
     private List<StoryPoint> storyPoints = new List<StoryPoint>(); // Track key story decisions and events
     
     // Story progression tracking
-    private enum StoryChapter { Tavern, Plains, Desert, Mountains, Castle, ThroneRoom }
+    public enum StoryChapter { Tavern, Plains, Desert, Mountains, Castle, ThroneRoom }
     private StoryChapter currentChapter = StoryChapter.Tavern;
     private int messagesInCurrentChapter = 0;
     private const int MESSAGES_PER_CHAPTER = 5;
@@ -38,17 +39,29 @@ public class SimpleChatUI : MonoBehaviour
     private int storyResponses = 0;
     private const int TRACKING_WINDOW = 10; // Track last 10 responses for balancing
     
-    // Track last response type to prevent consecutive story sections
-    private string lastResponseType = "";
-    
     // Track the last displayed action options for numeric input mapping
-    private List<string> lastActionOptions = new List<string>();
+    private List<ActionOption> currentActionOptions = new List<ActionOption>();
     
-    // Track the response types for each action option
-    private List<string> lastActionResponseTypes = new List<string>();
+    // Flag to track if we're returning from combat
+    private bool isReturningFromCombat = false;
+    
+    // Action option structure
+    private class ActionOption
+    {
+        public string displayText;
+        public string responseType;
+        public string description;
+        
+        public ActionOption(string displayText, string responseType, string description)
+        {
+            this.displayText = displayText;
+            this.responseType = responseType;
+            this.description = description;
+        }
+    }
     
     // Message data structure to track sender and content
-    private class MessageData
+    public class MessageData
     {
         public string sender;
         public string content;
@@ -63,7 +76,7 @@ public class SimpleChatUI : MonoBehaviour
     }
     
     // Story point structure to track key decisions and events
-    private class StoryPoint
+    public class StoryPoint
     {
         public string description;
         public StoryChapter chapter;
@@ -79,6 +92,8 @@ public class SimpleChatUI : MonoBehaviour
     
     private void Start()
     {
+        Debug.Log("SimpleChatUI: Start() called");
+        
         // Setup input field
         if (inputField != null)
         {
@@ -87,16 +102,76 @@ public class SimpleChatUI : MonoBehaviour
             inputField.placeholder.GetComponent<TextMeshProUGUI>().text = "Type your message here...";
         }
         
-        // Setup back button
-        if (backToGameButton != null)
+        // Setup next button
+        if (nextButton != null)
         {
-            backToGameButton.onClick.AddListener(GoBackToGame);
+            nextButton.onClick.AddListener(OnNextButtonClicked);
         }
         
-        StartWithAPIIntroduction();
+        // Ensure AIService exists
         EnsureAIServiceExists();
         
+        // Check if we have saved state to load
+        Debug.Log($"SimpleChatUI: Checking for saved state - ChatStateManager.Instance: {ChatStateManager.Instance != null}");
+        if (ChatStateManager.Instance != null)
+        {
+            Debug.Log($"SimpleChatUI: ChatStateManager found, checking HasSavedState()");
+            bool hasSavedState = ChatStateManager.Instance.HasSavedState();
+            Debug.Log($"SimpleChatUI: HasSavedState returned: {hasSavedState}");
+            
+            if (hasSavedState)
+            {
+                Debug.Log("SimpleChatUI: Loading saved chat state...");
+                ChatStateManager.Instance.LoadChatState(this);
+                
+                // Check if we're returning from combat using the flag
+                Debug.Log($"SimpleChatUI: isReturningFromCombat flag: {isReturningFromCombat}");
+                if (isReturningFromCombat)
+                {
+                    Debug.Log("SimpleChatUI: Detected return from combat - automatically generating post-combat story");
+                    // Reset the flag
+                    isReturningFromCombat = false;
+                    // Clear action options to prevent re-triggering combat
+                    currentActionOptions.Clear();
+                    // Automatically generate post-combat story
+                    StartCoroutine(GeneratePostCombatStoryAfterDelay());
+                }
+            }
+            else
+            {
+                Debug.Log("SimpleChatUI: No saved state found, starting fresh");
+                // Start fresh
+                StartWithAPIIntroduction();
+            }
+        }
+        else
+        {
+            Debug.Log("SimpleChatUI: No ChatStateManager found, starting fresh");
+            // Start fresh
+            StartWithAPIIntroduction();
+        }
+        
         SetUIState(true);
+    }
+    
+    private System.Collections.IEnumerator GeneratePostCombatStoryAfterDelay()
+    {
+        // Wait a moment for the scene to fully load and UI to be ready
+        yield return new WaitForSeconds(1f);
+        
+        // Add a brief system message to indicate the transition
+        AddSystemMessage("Returning from combat...");
+        
+        // Wait a bit more for the message to be displayed
+        yield return new WaitForSeconds(1f);
+        
+        // Generate the post-combat story
+        GeneratePostCombatStoryAsync();
+    }
+    
+    private async void GeneratePostCombatStoryAsync()
+    {
+        await GeneratePostCombatStory();
     }
     
     private void EnsureAIServiceExists()
@@ -137,83 +212,28 @@ public class SimpleChatUI : MonoBehaviour
     
     private async System.Threading.Tasks.Task GenerateResponse(string userMessage)
     {
+        Debug.Log("GenerateResponse: Starting response generation...");
+        
         isGenerating = true;
         SetUIState(false);
         
         try
         {
-            // First, let the AI decide what type of response is needed
-            string responseType = await DetermineResponseType(userMessage);
+            // Check for numeric input first
+            string responseType = GetNumericResponseType(userMessage);
             
-            // Check if the response is the same as the last one
-            if (responseType.ToLower() == lastResponseType)
+            if (!string.IsNullOrEmpty(responseType))
             {
-                // Use fallback to get a different response type
-                responseType = GetWeightedFallbackResponseType();
-                Debug.Log($"AI returned same type as last ({lastResponseType}), using fallback: {responseType}");
+                // Player selected a numbered option
+                Debug.Log($"GenerateResponse: Numeric input detected, response type: {responseType}");
+                await HandleSelectedAction(responseType, userMessage);
             }
-            
-            // Log the output type and message
-            Debug.Log($"Output Type: {responseType.ToUpper()} | Message: {userMessage}");
-            
-            // Call the appropriate function based on the response type
-            switch (responseType.ToLower())
+            else
             {
-                case "companion":
-                    TrackResponseType("companion");
-                    await GenerateCompanionInteraction(userMessage);
-                    // Automatically add story prompt after companion interaction
-                    TrackResponseType("story");
-                    await GenerateStoryProgression("Continue the story after the companion interaction");
-                    break;
-                case "story":
-                    TrackResponseType("story");
-                    await GenerateStoryProgression(userMessage);
-                    break;
-                case "combat":
-                    TrackResponseType("combat");
-                    await GenerateCombatScene(userMessage);
-                    // Automatically add story prompt after combat
-                    TrackResponseType("story");
-                    await GenerateStoryProgression("Continue the story after the combat");
-                    break;
-                case "unsure":
-                    await GenerateClarificationRequest(userMessage);
-                    break;
-                default:
-                    // Use weighted random selection to bias towards companion and combat
-                    string fallbackType = GetWeightedFallbackResponseType();
-                    
-                    // Log the fallback output type
-                    Debug.Log($"Fallback Output Type: {fallbackType.ToUpper()} | Message: {userMessage}");
-                    
-                    TrackResponseType(fallbackType);
-                    
-                    switch (fallbackType)
-                    {
-                        case "companion":
-                            await GenerateCompanionInteraction(userMessage);
-                            // Automatically add story prompt after companion interaction
-                            TrackResponseType("story");
-                            await GenerateStoryProgression("Continue the story after the companion interaction");
-                            break;
-                        case "combat":
-                            await GenerateCombatScene(userMessage);
-                            // Automatically add story prompt after combat
-                            TrackResponseType("story");
-                            await GenerateStoryProgression("Continue the story after the combat");
-                            break;
-                        case "story":
-                            await GenerateStoryProgression(userMessage);
-                            break;
-                        default:
-                            await GenerateCompanionInteraction(userMessage);
-                            // Automatically add story prompt after companion interaction
-                            TrackResponseType("story");
-                            await GenerateStoryProgression("Continue the story after the companion interaction");
-                            break;
-                    }
-                    break;
+                // Player entered their own text - determine what happens
+                responseType = await DetermineResponseType(userMessage);
+                Debug.Log($"GenerateResponse: Text input detected, response type: {responseType}");
+                await HandleSelectedAction(responseType, userMessage);
             }
             
             // Update story progression
@@ -222,6 +242,8 @@ public class SimpleChatUI : MonoBehaviour
             {
                 AdvanceToNextChapter();
             }
+            
+            Debug.Log("GenerateResponse: Response generation complete.");
         }
         catch (System.Exception e)
         {
@@ -233,44 +255,7 @@ public class SimpleChatUI : MonoBehaviour
         SetUIState(true);
     }
     
-    private async System.Threading.Tasks.Task<string> DetermineResponseType(string userMessage)
-    {
-        // Check for numeric input with specific mappings
-        // If player enters a number (1-3), use the tracked response types from the last displayed options
-        string numericResponse = await GetNumericResponseType(userMessage);
-        if (!string.IsNullOrEmpty(numericResponse))
-        {
-            return numericResponse;
-        }
-        
-        // If player enters their own text message, let the AI determine what happens next
-        // Add spontaneous combat chance (15% chance when not explicitly story)
-        if (lastResponseType != "story" && UnityEngine.Random.Range(0f, 1f) < 0.15f)
-        {
-            return "combat";
-        }
-        
-        string playerInfo = GetPlayerInformation();
-        string storySummary = GetStorySummary();
-        
-        string decisionPrompt = $@"Chapter {currentChapter} ({messagesInCurrentChapter + 1}/{MESSAGES_PER_CHAPTER})
-Player: {playerInfo}
-Story: {storySummary}
-Input: {userMessage}
-
-Choose response type (ONE WORD):
-1. ""combat"" - fighting, danger, enemies, ambush
-2. ""companion"" - talking, social, questions
-3. ""story"" - exploration, travel, progress
-4. ""unsure"" - unclear input
-
-Combat can be spontaneous. If unsure, respond ""unsure"".";
-        
-        string response = await AIService.Instance.SendMessageAsync(decisionPrompt);
-        return response.Trim().ToLower();
-    }
-    
-    private async System.Threading.Tasks.Task<string> GetNumericResponseType(string userMessage)
+    private string GetNumericResponseType(string userMessage)
     {
         string trimmedMessage = userMessage.Trim();
         
@@ -300,70 +285,106 @@ Combat can be spontaneous. If unsure, respond ""unsure"".";
             }
         }
         
-        // If we have a valid option and tracked action types, use them
-        if (selectedOption >= 1 && selectedOption <= 3 && lastActionResponseTypes.Count >= 3)
+        // If we have a valid option and current action options, use them
+        if (selectedOption >= 1 && selectedOption <= currentActionOptions.Count)
         {
-            string responseType = lastActionResponseTypes[selectedOption - 1];
-            Debug.Log($"Numeric input {selectedOption} mapped to {responseType} from tracked options");
-            return responseType;
-        }
-        
-        // If no tracked options but we have a valid number, use fixed mapping as fallback
-        if (selectedOption >= 1 && selectedOption <= 3)
-        {
-            string responseType = GetFixedNumericResponseType(trimmedMessage);
-            Debug.Log($"Numeric input {selectedOption} mapped to {responseType} using fixed mapping (no tracked options)");
+            string responseType = currentActionOptions[selectedOption - 1].responseType;
+            Debug.Log($"Numeric input {selectedOption} mapped to {responseType}");
             return responseType;
         }
         
         return "";
     }
     
-    private string GetFixedNumericResponseType(string trimmedMessage)
+    private async System.Threading.Tasks.Task<string> DetermineResponseType(string userMessage)
     {
-        // Fallback to fixed mapping when no action options are tracked
-        if (trimmedMessage.Length == 1 && char.IsDigit(trimmedMessage[0]))
-        {
-            int number = int.Parse(trimmedMessage);
-            switch (number)
-            {
-                case 1: return "combat";
-                case 2: return "companion";
-                case 3: return "story";
-                default: return "";
-            }
-        }
+        // For text input, use AI to analyze what type of action the player wants
+        string analysisPrompt = $@"Analyze this player's input and determine what type of RPG action they want to take.
+
+Player input: ""{userMessage}""
+
+Available action types:
+- COMBAT: Any action involving fighting, conflict, danger, or physical confrontation
+- COMPANION: Any action involving social interaction, character bonding, or relationship development
+- STORY: Any action involving exploration, discovery, investigation, or narrative progression
+
+IMPORTANT: Only classify as a valid action type if the input clearly indicates the player's intent. If the input is unclear, nonsensical, or doesn't match any action type, respond with ""UNCLEAR"".
+
+Use your understanding of natural language and RPG context to determine the player's intent. Consider the overall meaning and context, not just specific words.
+
+Respond with ONLY the action type (COMBAT, COMPANION, STORY, or UNCLEAR) that best matches what the player wants to do:";
         
-        if (trimmedMessage.Length > 1 && char.IsDigit(trimmedMessage[0]))
+        try
         {
-            string numberPart = "";
-            int i = 0;
-            while (i < trimmedMessage.Length && (char.IsDigit(trimmedMessage[i]) || trimmedMessage[i] == '.'))
-            {
-                numberPart += trimmedMessage[i];
-                i++;
-            }
+            string aiResponse = await AIService.Instance.SendMessageAsync(analysisPrompt);
+            string responseType = aiResponse.Trim().ToLower();
             
-            if (int.TryParse(numberPart.Replace(".", ""), out int actionNumber))
+            Debug.Log($"AI Analysis: Player input '{userMessage}' analyzed as '{responseType}'");
+            
+            // Map the AI response to our response types
+            if (responseType.Contains("combat"))
+                return "combat";
+            else if (responseType.Contains("companion"))
+                return "companion";
+            else if (responseType.Contains("story"))
+                return "story";
+            else
             {
-                switch (actionNumber)
-                {
-                    case 1: return "combat";
-                    case 2: return "companion";
-                    case 3: return "story";
-                    default: return "";
-                }
+                Debug.LogWarning($"AI returned unexpected response type: {responseType}");
+                string errorMessage = "I couldn't understand what you want to do. Please try rephrasing your request. You can:\n" +
+                                    "• Use numbers (1, 2, 3) to select from the options above\n" +
+                                    "• Describe what you want to do more clearly\n" +
+                                    "• Try different wording for your action";
+                AddSystemMessage(errorMessage);
+                return ""; // Return empty to indicate no action should be taken
             }
         }
-        
-        return "";
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Error analyzing player input with AI: {e.Message}");
+            string errorMessage = "I'm having trouble understanding your request. Please try:\n" +
+                                "• Using numbers (1, 2, 3) to select from the options above\n" +
+                                "• Rephrasing what you want to do\n" +
+                                "• Being more specific about your action";
+            AddSystemMessage(errorMessage);
+            return ""; // Return empty to indicate no action should be taken
+        }
     }
     
-    private string GetResponseTypeFromAction(string actionText)
+    private async System.Threading.Tasks.Task HandleSelectedAction(string responseType, string userMessage)
     {
-        // Instead of using keywords, we'll ask the AI to determine the response type
-        // This will be handled in the DetermineResponseType method when numeric input is detected
-        return "";
+        // If response type is empty, it means AI couldn't understand the player's intent
+        if (string.IsNullOrEmpty(responseType))
+        {
+            Debug.Log("HandleSelectedAction: Empty response type - AI couldn't understand player intent, no action taken");
+            return;
+        }
+        
+        Debug.Log($"HandleSelectedAction: Handling {responseType} action...");
+        
+        TrackResponseType(responseType);
+        
+        switch (responseType.ToLower())
+        {
+            case "companion":
+                Debug.Log("HandleSelectedAction: Calling GenerateCompanionInteraction");
+                await GenerateCompanionInteraction(userMessage);
+                break;
+            case "combat":
+                Debug.Log("HandleSelectedAction: Calling GenerateCombatScene");
+                await GenerateCombatScene(userMessage);
+                break;
+            case "story":
+                Debug.Log("HandleSelectedAction: Calling GenerateStoryProgression");
+                await GenerateStoryProgression(userMessage);
+                break;
+            default:
+                Debug.Log("HandleSelectedAction: Calling GenerateStoryProgression (default)");
+                await GenerateStoryProgression(userMessage);
+                break;
+        }
+        
+        Debug.Log($"HandleSelectedAction: Completed {responseType} action.");
     }
     
     private async System.Threading.Tasks.Task GenerateCompanionInteraction(string userMessage)
@@ -378,21 +399,20 @@ Story: {storySummary}
 Instructions: {chapterInstructions}
 Input: {userMessage}
 
-Generate companion interaction:
+Generate a brief companion interaction scene. Focus on dialogue and character development.
 
-=== OPENING SCENE ===
-[2-3 sentences: current setting and recent events]
-
-=== COMPANION INTERACTION SUGGESTIONS ===
-1. [Paladin: Ask about their code of honor]
-2. [Rogue: Tell them a joke]
-3. [Mage: Ask about their studies]
-4. [Warrior: Compliment their strength]
-
-Keep suggestions SHORT (3-5 words max).";
+=== COMPANION INTERACTION ===
+[2-3 sentences describing the interaction with companions, their responses, and any insights gained]";
         
         string response = await AIService.Instance.SendMessageAsync(companionPrompt);
-        ParseAndDisplayNarratorResponse(response);
+        AddAIMessage(response);
+        
+        // Add system message about companion interaction
+        AddSystemMessage("Companion interaction complete. Press Next to continue.");
+        
+        // Clear action options to indicate we're in a special state
+        currentActionOptions.Clear();
+        
         await GenerateInteractionSummary(userMessage, response);
     }
     
@@ -402,255 +422,57 @@ Keep suggestions SHORT (3-5 words max).";
         string storySummary = GetStorySummary();
         string chapterInstructions = GetChapterSpecificInstructions();
         
-        // Determine response types ourselves (randomized)
-        string[] responseTypes = { "combat", "companion", "story" };
-        for (int i = responseTypes.Length - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            string temp = responseTypes[i];
-            responseTypes[i] = responseTypes[j];
-            responseTypes[j] = temp;
-        }
-        
-        // Track the response types for numeric input mapping
-        lastActionResponseTypes.Clear();
-        lastActionResponseTypes.AddRange(responseTypes);
-        
         string storyPrompt = $@"Chapter {currentChapter} ({messagesInCurrentChapter + 1}/{MESSAGES_PER_CHAPTER})
 Player: {playerInfo}
 Story: {storySummary}
 Instructions: {chapterInstructions}
 Input: {userMessage}
 
-Generate story progression:
+Generate brief story progression:
 
 === STORY SCENE ===
-[4-6 sentences: what happens next, natural and unexpected]
-
-Generate exactly 3 action options in this order:
-1. {responseTypes[0].ToUpper()} action - generate one {responseTypes[0]} action
-2. {responseTypes[1].ToUpper()} action - generate one {responseTypes[1]} action  
-3. {responseTypes[2].ToUpper()} action - generate one {responseTypes[2]} action
-
-Make the actions natural and varied. Do not include any labels or brackets.";
+[2-3 sentences describing what happens next, natural and unexpected developments]";
         
         string response = await AIService.Instance.SendMessageAsync(storyPrompt);
-        ParseAndDisplayStoryResponse(response);
+        AddAIMessage(response);
+        
+        // Generate action options
+        await GenerateActionOptions();
+        
         await GenerateInteractionSummary(userMessage, response);
     }
     
     private async System.Threading.Tasks.Task GenerateCombatScene(string userMessage)
     {
+        Debug.Log("GenerateCombatScene: Starting combat scene generation...");
+        
         string playerInfo = GetPlayerInformation();
         string storySummary = GetStorySummary();
         string chapterInstructions = GetChapterSpecificInstructions();
         
-        // Let the AI determine if this is spontaneous or player-initiated based on context
         string combatPrompt = $@"Chapter {currentChapter} ({messagesInCurrentChapter + 1}/{MESSAGES_PER_CHAPTER})
 Player: {playerInfo}
 Story: {storySummary}
 Instructions: {chapterInstructions}
 Input: {userMessage}
 
-Generate combat scene:
+Generate a brief combat scene:
 
-=== COMBAT SETUP ===
-[2-3 sentences: enemies appear, ambush, danger - unexpected and natural]
-
-=== BATTLE PREPARATION ===
-[1-2 sentences: situation escalates, enemies act]
-
-=== TRANSITION TO COMBAT ===
-[1 sentence: natural transition to combat]
-
-Describe events, don't give instructions.";
+=== COMBAT SCENE ===
+[2-3 sentences describing the combat situation, enemies, and immediate danger]";
         
         string response = await AIService.Instance.SendMessageAsync(combatPrompt);
-        ParseAndDisplayCombatResponse(response);
+        AddAIMessage(response);
+        
+        // Add system message about combat transition
+        AddSystemMessage("Combat scene ready. Press Next to enter battle.");
+        
+        // Clear action options to indicate we're in a special state
+        currentActionOptions.Clear();
+        
         await GenerateInteractionSummary(userMessage, response);
         
-        // TODO: Transition to combat scene
-        AddSystemMessage("Transitioning to combat...");
-    }
-    
-    private async System.Threading.Tasks.Task GenerateClarificationRequest(string userMessage)
-    {
-        string playerInfo = GetPlayerInformation();
-        string storySummary = GetStorySummary();
-        string chapterInstructions = GetChapterSpecificInstructions();
-        
-        // Determine response types ourselves (randomized)
-        string[] responseTypes = { "combat", "companion", "story" };
-        for (int i = responseTypes.Length - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            string temp = responseTypes[i];
-            responseTypes[i] = responseTypes[j];
-            responseTypes[j] = temp;
-        }
-        
-        // Track the response types for numeric input mapping
-        lastActionResponseTypes.Clear();
-        lastActionResponseTypes.AddRange(responseTypes);
-        
-        string clarificationPrompt = $@"Chapter {currentChapter} ({messagesInCurrentChapter + 1}/{MESSAGES_PER_CHAPTER})
-Player: {playerInfo}
-Story: {storySummary}
-Instructions: {chapterInstructions}
-Input: {userMessage}
-
-Input unclear. Ask for clarification:
-
-=== CLARIFICATION REQUEST ===
-[2-3 sentences: acknowledge input, ask for clarification]
-
-Generate exactly 3 action options in this order:
-1. {responseTypes[0].ToUpper()} action - generate one {responseTypes[0]} action
-2. {responseTypes[1].ToUpper()} action - generate one {responseTypes[1]} action  
-3. {responseTypes[2].ToUpper()} action - generate one {responseTypes[2]} action
-
-Make the actions natural and varied. Do not include any labels or brackets. Be encouraging, don't assume intent.";
-        
-        string response = await AIService.Instance.SendMessageAsync(clarificationPrompt);
-        ParseAndDisplayClarificationResponse(response);
-    }
-    
-    private void ParseAndDisplayNarratorResponse(string fullResponse)
-    {
-        // Split the response into sections
-        string[] sections = fullResponse.Split(new string[] { "===" }, StringSplitOptions.RemoveEmptyEntries);
-        
-        if (sections.Length >= 6) // We expect 6 sections: 3 headers + 3 content
-        {
-            // Extract opening scene (section 1 contains the content)
-            string openingScene = sections.Length > 1 ? sections[1].Trim() : "";
-            if (!string.IsNullOrEmpty(openingScene))
-            {
-                AddAIMessage(openingScene);
-            }
-            
-            // Extract companion suggestions (section 3 contains the content)
-            string companionSuggestions = sections.Length > 3 ? sections[3].Trim() : "";
-            if (!string.IsNullOrEmpty(companionSuggestions))
-            {
-                AddAIMessage(companionSuggestions);
-            }
-            
-            // Extract closing scene (section 5 contains the content)
-            string closingScene = sections.Length > 5 ? sections[5].Trim() : "";
-            if (!string.IsNullOrEmpty(closingScene))
-            {
-                AddAIMessage(closingScene);
-            }
-        }
-        else
-        {
-            // Fallback: display the full response as-is
-            Debug.LogWarning($"Expected 6+ sections, got {sections.Length}. Using fallback display.");
-            AddAIMessage(fullResponse);
-        }
-    }
-    
-    private void ParseAndDisplayCombatResponse(string fullResponse)
-    {
-        // Split the response into sections
-        string[] sections = fullResponse.Split(new string[] { "===" }, StringSplitOptions.RemoveEmptyEntries);
-        
-        if (sections.Length >= 3)
-        {
-            // Extract combat setup (section 1 contains the content)
-            string combatSetup = sections.Length > 1 ? sections[1].Trim() : "";
-            if (!string.IsNullOrEmpty(combatSetup))
-            {
-                AddAIMessage(combatSetup);
-            }
-            
-            // Extract battle preparation (section 3 contains the content)
-            string battlePrep = sections.Length > 3 ? sections[3].Trim() : "";
-            if (!string.IsNullOrEmpty(battlePrep))
-            {
-                AddAIMessage(battlePrep);
-            }
-            
-            // Extract transition (section 5 contains the content)
-            string transition = sections.Length > 5 ? sections[5].Trim() : "";
-            if (!string.IsNullOrEmpty(transition))
-            {
-                AddAIMessage(transition);
-            }
-        }
-        else
-        {
-            // Fallback: display the full response as-is
-            Debug.LogWarning($"Expected 6+ sections in combat response, got {sections.Length}. Using fallback display.");
-            AddAIMessage(fullResponse);
-        }
-    }
-    
-    private void ParseAndDisplayStoryResponse(string fullResponse)
-    {
-        Debug.Log($"Parsing story response: {fullResponse}");
-        
-        // Just display the full response as-is
-        AddAIMessage(fullResponse);
-        
-        // Only do minimal parsing to track action options for numeric input
-        TrackActionOptionsForNumericInput(fullResponse);
-    }
-    
-    private void TrackActionOptionsForNumericInput(string fullResponse)
-    {
-        lastActionOptions.Clear();
-        lastActionResponseTypes.Clear();
-        
-        // Simple parsing: look for numbered options and extract response types
-        string[] lines = fullResponse.Split('\n');
-        foreach (string line in lines)
-        {
-            string trimmedLine = line.Trim();
-            if (trimmedLine.StartsWith("1.") || trimmedLine.StartsWith("2.") || trimmedLine.StartsWith("3."))
-            {
-                // Extract the action text (remove the number and period)
-                int dotIndex = trimmedLine.IndexOf('.');
-                if (dotIndex > 0 && dotIndex < trimmedLine.Length - 1)
-                {
-                    string actionText = trimmedLine.Substring(dotIndex + 1).Trim();
-                    
-                    // Simple keyword-based mapping for response types
-                    string responseType = "";
-                    string lowerAction = actionText.ToLower();
-                    
-                    if (lowerAction.Contains("combat") || lowerAction.Contains("fight") || lowerAction.Contains("attack") || 
-                        lowerAction.Contains("engage") || lowerAction.Contains("defend") || lowerAction.Contains("battle"))
-                        responseType = "combat";
-                    else if (lowerAction.Contains("companion") || lowerAction.Contains("talk") || lowerAction.Contains("ask") || 
-                             lowerAction.Contains("discuss") || lowerAction.Contains("share") || lowerAction.Contains("social"))
-                        responseType = "companion";
-                    else if (lowerAction.Contains("story") || lowerAction.Contains("explore") || lowerAction.Contains("investigate") || 
-                             lowerAction.Contains("search") || lowerAction.Contains("prepare") || lowerAction.Contains("continue"))
-                        responseType = "story";
-                    else
-                        responseType = "story"; // Default fallback
-                    
-                    lastActionOptions.Add(actionText);
-                    lastActionResponseTypes.Add(responseType);
-                    
-                    Debug.Log($"Tracked option: {trimmedLine.Substring(0, dotIndex + 1)} -> {responseType} -> '{actionText}'");
-                }
-            }
-        }
-        
-        Debug.Log($"Tracked action options (player view): {string.Join(", ", lastActionOptions)}");
-        Debug.Log($"Tracked response types: {string.Join(", ", lastActionResponseTypes)}");
-    }
-    
-    private void ParseAndDisplayClarificationResponse(string fullResponse)
-    {
-        // Just display the full response as-is
-        AddAIMessage(fullResponse);
-        
-        // Only do minimal parsing to track action options for numeric input
-        TrackActionOptionsForNumericInput(fullResponse);
+        Debug.Log("GenerateCombatScene: Combat scene generation complete. Waiting for Next button.");
     }
     
     private async System.Threading.Tasks.Task GenerateInteractionSummary(string userMessage, string aiResponse)
@@ -721,7 +543,6 @@ Write a single sentence summary that captures the most important thing that happ
         companionResponses = 0;
         combatResponses = 0;
         storyResponses = 0;
-        lastResponseType = ""; // Reset last response type for new chapter
     }
     
     private void AddUserMessage(string content)
@@ -761,6 +582,12 @@ Write a single sentence summary that captures the most important thing that happ
         
         // Scroll to bottom
         StartCoroutine(ScrollToBottom());
+        
+        // Save state periodically (every 5 messages to avoid too frequent saves)
+        if (messageHistory.Count % 5 == 0)
+        {
+            SaveCurrentChatState();
+        }
     }
     
     private void RemoveOldestMessage()
@@ -828,13 +655,103 @@ Write a single sentence summary that captures the most important thing that happ
         if (inputField != null)
             inputField.interactable = enabled;
         
-        if (backToGameButton != null)
-            backToGameButton.interactable = enabled;
+        if (nextButton != null)
+            nextButton.interactable = enabled;
     }
     
     public void GoBackToGame()
     {
+        // Save current chat state before transitioning
+        SaveCurrentChatState();
+        
         SceneManager.LoadScene(gameSceneName);
+    }
+    
+    public async void OnNextButtonClicked()
+    {
+        Debug.Log("OnNextButtonClicked: Next button clicked");
+        
+        // Check if we're in a special state that needs scene transition
+        if (currentActionOptions.Count == 0)
+        {
+            Debug.Log("OnNextButtonClicked: No action options, checking for special state");
+            
+            // We're in a special state (like combat ready or companion interaction complete)
+            // Check the last system message to determine what to do
+            if (messageHistory.Count > 0)
+            {
+                var lastMessage = messageHistory[messageHistory.Count - 1];
+                Debug.Log($"OnNextButtonClicked: Last message from {lastMessage.sender}: {lastMessage.content}");
+                
+                if (lastMessage.sender == "System" && lastMessage.content.Contains("Combat scene ready"))
+                {
+                    Debug.Log("OnNextButtonClicked: Combat scene ready detected, transitioning to combat");
+                    
+                    // Set flag before saving state
+                    isReturningFromCombat = true;
+                    
+                    // Save current chat state before transitioning
+                    SaveCurrentChatState();
+                    
+                    // Transition to combat scene
+                    AddSystemMessage("Transitioning to combat...");
+                    StartCoroutine(TransitionToCombatScene());
+                    return;
+                }
+                else if (lastMessage.sender == "System" && lastMessage.content.Contains("Companion interaction complete"))
+                {
+                    Debug.Log("OnNextButtonClicked: Companion interaction complete, generating new options");
+                    
+                    // Continue with story progression
+                    await GenerateActionOptions();
+                    return;
+                }
+            }
+        }
+        
+        Debug.Log("OnNextButtonClicked: Normal flow, generating new action options");
+        
+        // Save current chat state before transitioning
+        SaveCurrentChatState();
+        
+        // Normal flow - generate new action options
+        await GenerateActionOptions();
+    }
+    
+    private IEnumerator TransitionToCombatScene()
+    {
+        // Wait a moment for the message to be displayed
+        yield return new WaitForSeconds(2f);
+        
+        // Load the battle scene
+        SceneManager.LoadScene(gameSceneName);
+    }
+    
+    private async System.Threading.Tasks.Task GeneratePostCombatStory()
+    {
+        Debug.Log("GeneratePostCombatStory: Starting post-combat story generation...");
+        
+        isGenerating = true;
+        SetUIState(false);
+        
+        try
+        {
+            // Use the existing story progression method for consistency
+            string postCombatMessage = "The party has returned from combat. Continue the story.";
+            await GenerateStoryProgression(postCombatMessage);
+            
+            // Add story point about the combat outcome
+            AddStoryPoint($"Combat encounter completed in {currentChapter} chapter");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Error generating post-combat story: {e.Message}");
+            AddSystemMessage("The party continues their journey after the battle.");
+            await GenerateActionOptions();
+        }
+        
+        isGenerating = false;
+        SetUIState(true);
     }
     
     // Debug methods for testing
@@ -856,6 +773,12 @@ Write a single sentence summary that captures the most important thing that happ
     
     private async void StartWithAPIIntroduction()
     {
+        // Clear any existing saved state when starting fresh
+        if (ChatStateManager.Instance != null)
+        {
+            ChatStateManager.Instance.ClearSavedState();
+        }
+        
         isGenerating = true;
         SetUIState(false);
         
@@ -869,22 +792,18 @@ Story: {storySummary}
 
 INSTRUCTIONS: {GetChapterSpecificInstructions()}
 
-INTRODUCTION: Generate the opening story scene for the tavern chapter.
-
-FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
+INTRODUCTION: Generate a brief opening story scene for the tavern chapter.
 
 === STORY SCENE ===
-[4-6 sentences describing the tavern setting, introducing the companions, and setting up the adventure. This can be longer than other scenes.]
-
-What would you like to do next?
-1. [Action suggestion 1]
-2. [Action suggestion 2]
-3. [Action suggestion 3]";
+[2-3 sentences describing the tavern setting, introducing the companions, and setting up the adventure.]";
             
             string response = await AIService.Instance.SendMessageAsync(initialPrompt);
             
-            // Parse the response into sections
-            ParseAndDisplayStoryResponse(response);
+            // Display the response
+            AddAIMessage(response);
+            
+            // Generate action options
+            await GenerateActionOptions();
             
             // Add initial story point
             AddStoryPoint("Player joined the adventuring party at the tavern");
@@ -973,60 +892,8 @@ What would you like to do next?
         }
     }
     
-    private string GetWeightedFallbackResponseType()
-    {
-        // Get current weights based on recent response frequency
-        var weights = GetAdjustedWeights();
-        
-        float random = UnityEngine.Random.Range(0f, 1f);
-        
-        if (random < weights.companionWeight)
-        {
-            return "companion";
-        }
-        else if (random < weights.companionWeight + weights.combatWeight)
-        {
-            return "combat";
-        }
-        else
-        {
-            return "story";
-        }
-    }
-    
-    private (float companionWeight, float combatWeight, float storyWeight) GetAdjustedWeights()
-    {
-        int totalResponses = companionResponses + combatResponses + storyResponses;
-        
-        if (totalResponses < 3) // Not enough data, use default weights
-        {
-            return (0.5f, 0.4f, 0.1f); // Updated default weights: 50% companion, 40% combat, 10% story
-        }
-        
-        // Calculate current frequencies
-        float companionFreq = (float)companionResponses / totalResponses;
-        float combatFreq = (float)combatResponses / totalResponses;
-        float storyFreq = (float)storyResponses / totalResponses;
-        
-        // Adjust weights to push towards desired balance (50% companion, 40% combat, 10% story)
-        float companionWeight = 0.3f + (0.3f - companionFreq) * 0.3f; // Boost if under 50%
-        float combatWeight = 0.4f + (0.4f - combatFreq) * 0.3f; // Boost if under 40%
-        float storyWeight = 0.3f + (0.3f - storyFreq) * 0.3f; // Boost if under 10%
-        
-        // Normalize weights
-        float totalWeight = companionWeight + combatWeight + storyWeight;
-        companionWeight /= totalWeight;
-        combatWeight /= totalWeight;
-        storyWeight /= totalWeight;
-        
-        return (companionWeight, combatWeight, storyWeight);
-    }
-    
     private void TrackResponseType(string responseType)
     {
-        // Update the last response type
-        lastResponseType = responseType.ToLower();
-        
         switch (responseType.ToLower())
         {
             case "companion":
@@ -1062,5 +929,195 @@ What would you like to do next?
         }
         
         messageHistory.Clear();
+    }
+    
+    // Save current chat state to ChatStateManager
+    private void SaveCurrentChatState()
+    {
+        Debug.Log($"SimpleChatUI: SaveCurrentChatState() called - ChatStateManager.Instance: {ChatStateManager.Instance != null}, messageHistory.Count: {messageHistory.Count}, isReturningFromCombat: {isReturningFromCombat}");
+        
+        if (ChatStateManager.Instance != null)
+        {
+            // Convert SimpleChatUI types to global types for serialization
+            List<global::MessageData> serializableMessages = new List<global::MessageData>();
+            foreach (var msg in messageHistory)
+            {
+                serializableMessages.Add(new global::MessageData(msg.sender, msg.content, msg.color));
+            }
+            
+            List<global::StoryPoint> serializableStoryPoints = new List<global::StoryPoint>();
+            foreach (var point in storyPoints)
+            {
+                serializableStoryPoints.Add(new global::StoryPoint(point.description, (int)point.chapter, point.messageIndex));
+            }
+            
+            Debug.Log($"SimpleChatUI: Saving state with {serializableMessages.Count} messages, {serializableStoryPoints.Count} story points, chapter: {currentChapter}, isReturningFromCombat: {isReturningFromCombat}");
+            
+            ChatStateManager.Instance.SaveChatState(serializableMessages, serializableStoryPoints,
+                                                   (int)currentChapter, messagesInCurrentChapter,
+                                                   companionResponses, combatResponses, storyResponses,
+                                                   isReturningFromCombat);
+        }
+        else
+        {
+            Debug.LogError("SimpleChatUI: ChatStateManager.Instance is null, cannot save state!");
+        }
+    }
+    
+    // Load persisted state from ChatStateManager
+    public void LoadPersistedState(List<SimpleChatUI.MessageData> savedMessageHistory, List<SimpleChatUI.StoryPoint> savedStoryPoints,
+                                  int savedChapter, int savedMessagesInChapter,
+                                  int savedCompanionResponses, int savedCombatResponses, int savedStoryResponses,
+                                  bool savedIsReturningFromCombat = false)
+    {
+        Debug.Log($"SimpleChatUI: LoadPersistedState() called with {savedMessageHistory.Count} messages, {savedStoryPoints.Count} story points, chapter: {savedChapter}, isReturningFromCombat: {savedIsReturningFromCombat}");
+        
+        // Restore message history
+        messageHistory.Clear();
+        messageHistory.AddRange(savedMessageHistory);
+        
+        // Restore story points
+        storyPoints.Clear();
+        storyPoints.AddRange(savedStoryPoints);
+        
+        // Restore chapter and progress
+        currentChapter = (StoryChapter)savedChapter;
+        messagesInCurrentChapter = savedMessagesInChapter;
+        
+        // Restore response tracking
+        companionResponses = savedCompanionResponses;
+        combatResponses = savedCombatResponses;
+        storyResponses = savedStoryResponses;
+        
+        // Restore combat return flag
+        isReturningFromCombat = savedIsReturningFromCombat;
+        
+        // Rebuild the UI
+        RebuildChatText();
+        
+        Debug.Log($"SimpleChatUI: Loaded chat state: Chapter {currentChapter}, {messageHistory.Count} messages, {storyPoints.Count} story points, isReturningFromCombat: {isReturningFromCombat}");
+    }
+    
+    private async System.Threading.Tasks.Task GenerateActionOptions()
+    {
+        Debug.Log("GenerateActionOptions: Starting to generate options...");
+        
+        // Clear previous options
+        currentActionOptions.Clear();
+        
+        // Get recent story context for better option generation
+        string storyContext = GetRecentStoryContext();
+        Debug.Log($"GenerateActionOptions: Story context: {storyContext}");
+        
+        // Create a prompt for the AI to generate contextually relevant action options
+        string contextPrompt = $"Based on the current story situation, generate 3 different action options for the player. " +
+                              $"Recent story context: {storyContext}\n\n" +
+                              $"Provide one combat-focused option, one companion interaction option, and one story progression option. " +
+                              $"Make each option specific and relevant to what's happening right now. " +
+                              $"Format your response as:\n" +
+                              $"COMBAT: [combat option description]\n" +
+                              $"COMPANION: [companion interaction option]\n" +
+                              $"STORY: [story progression option]\n" +
+                              $"Keep each option concise but descriptive (1-2 sentences).";
+        
+        try
+        {
+            Debug.Log("GenerateActionOptions: Sending prompt to AI...");
+            string aiResponse = await AIService.Instance.SendMessageAsync(contextPrompt);
+            Debug.Log($"GenerateActionOptions: AI Response: {aiResponse}");
+            
+            // Parse the AI response to extract the three options
+            string[] lines = aiResponse.Split('\n');
+            foreach (string line in lines)
+            {
+                string trimmedLine = line.Trim();
+                if (trimmedLine.StartsWith("COMBAT:"))
+                {
+                    string combatOption = trimmedLine.Substring("COMBAT:".Length).Trim();
+                    currentActionOptions.Add(new ActionOption(combatOption, "combat", "Engage in combat"));
+                    Debug.Log($"GenerateActionOptions: Added combat option: {combatOption}");
+                }
+                else if (trimmedLine.StartsWith("COMPANION:"))
+                {
+                    string companionOption = trimmedLine.Substring("COMPANION:".Length).Trim();
+                    currentActionOptions.Add(new ActionOption(companionOption, "companion", "Interact with companions"));
+                    Debug.Log($"GenerateActionOptions: Added companion option: {companionOption}");
+                }
+                else if (trimmedLine.StartsWith("STORY:"))
+                {
+                    string storyOption = trimmedLine.Substring("STORY:".Length).Trim();
+                    currentActionOptions.Add(new ActionOption(storyOption, "story", "Progress the story"));
+                    Debug.Log($"GenerateActionOptions: Added story option: {storyOption}");
+                }
+            }
+            
+            // If AI parsing failed, fall back to basic options
+            if (currentActionOptions.Count < 3)
+            {
+                Debug.LogWarning($"GenerateActionOptions: Failed to parse AI-generated options (got {currentActionOptions.Count}), using fallback options");
+                currentActionOptions.Clear();
+                currentActionOptions.Add(new ActionOption("Fight the enemy with all your might", "combat", "Engage in combat"));
+                currentActionOptions.Add(new ActionOption("Talk to your companions about the situation", "companion", "Interact with companions"));
+                currentActionOptions.Add(new ActionOption("Continue exploring the area", "story", "Progress the story"));
+            }
+            
+            Debug.Log($"GenerateActionOptions: Generated {currentActionOptions.Count} options, calling DisplayActionOptions");
+            DisplayActionOptions();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"GenerateActionOptions: Error generating action options: {e.Message}");
+            // Fallback to basic options if AI fails
+            currentActionOptions.Clear();
+            currentActionOptions.Add(new ActionOption("Fight the enemy with all your might", "combat", "Engage in combat"));
+            currentActionOptions.Add(new ActionOption("Talk to your companions about the situation", "companion", "Interact with companions"));
+            currentActionOptions.Add(new ActionOption("Continue exploring the area", "story", "Progress the story"));
+            Debug.Log("GenerateActionOptions: Using fallback options, calling DisplayActionOptions");
+            DisplayActionOptions();
+        }
+    }
+    
+    private string GetRecentStoryContext()
+    {
+        // Get the last few messages to provide context
+        string context = "You are in a fantasy RPG world. ";
+        
+        // Add recent story points if available
+        if (ChatStateManager.Instance != null && ChatStateManager.Instance.chatState.storyPoints.Count > 0)
+        {
+            var recentStoryPoints = ChatStateManager.Instance.chatState.storyPoints.TakeLast(3).ToList();
+            context += "Recent events: " + string.Join(" ", recentStoryPoints.Select(sp => sp.description)) + ". ";
+        }
+        
+        // Add recent messages for context
+        if (messageHistory.Count > 0)
+        {
+            var recentMessages = messageHistory.TakeLast(3).ToList();
+            context += "Recent conversation: " + string.Join(" ", recentMessages.Select(m => m.content)) + ". ";
+        }
+        
+        return context;
+    }
+    
+    private void DisplayActionOptions()
+    {
+        Debug.Log($"DisplayActionOptions: Called with {currentActionOptions.Count} options");
+        
+        if (currentActionOptions.Count == 0)
+        {
+            Debug.LogWarning("DisplayActionOptions: No action options to display!");
+            return;
+        }
+        
+        string optionsText = "\n\nWhat would you like to do next?\n";
+        for (int i = 0; i < currentActionOptions.Count; i++)
+        {
+            // Only show the displayText, which is stripped of tags
+            optionsText += $"{i + 1}. {currentActionOptions[i].displayText}\n";
+            Debug.Log($"DisplayActionOptions: Option {i + 1}: {currentActionOptions[i].displayText}");
+        }
+        
+        Debug.Log($"DisplayActionOptions: Final options text: {optionsText}");
+        AddAIMessage(optionsText);
     }
 } 

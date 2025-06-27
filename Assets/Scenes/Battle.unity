@@ -152,11 +152,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 83c10585a8277471b8a9b67003998484, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  model: gpt-3.5-turbo
-  maxTokens: 150
-  temperature: 0.7
-  systemPrompt: You are a helpful AI assistant in a fantasy RPG game. Keep responses
-    concise and engaging.
+  apiKey: 
+  maxConversationHistory: 20
 --- !u!4 &14556046
 Transform:
   m_ObjectHideFlags: 0
@@ -2070,6 +2067,7 @@ MonoBehaviour:
   victoryRestartButton: {fileID: 884625319}
   victoryMainMenuButton: {fileID: 441057795}
   victoryNextLevelButton: {fileID: 100903287}
+  victoryReturnToChatButton: {fileID: 100903287}
   defeatRestartButton: {fileID: 1140173870}
   defeatMainMenuButton: {fileID: 140060383}
   panelFadeInDuration: 1
