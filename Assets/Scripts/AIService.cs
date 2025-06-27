@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System;
+using System.IO;
 
 [System.Serializable]
 public class ChatMessage
@@ -92,6 +93,9 @@ When generating action options, consider the current story context and provide s
             Instance = this;
             DontDestroyOnLoad(gameObject);
             
+            // Load API key from .env file
+            LoadAPIKeyFromEnv();
+            
             // Debug: Log the actual configuration being used
             Debug.Log($"AIService Configuration - Model: {model}, MaxTokens: {maxTokens}, Temperature: {temperature}");
             
@@ -100,6 +104,48 @@ When generating action options, consider the current story context and provide s
         else
         {
             Destroy(gameObject);
+        }
+    }
+    
+    /// <summary>
+    /// Load API key from .env file
+    /// </summary>
+    private void LoadAPIKeyFromEnv()
+    {
+        try
+        {
+            // Try to load from .env file in the project root
+            string projectRoot = Application.dataPath.Replace("/Assets", "");
+            string envPath = Path.Combine(projectRoot, ".env");
+            
+            if (File.Exists(envPath))
+            {
+                string[] lines = File.ReadAllLines(envPath);
+                foreach (string line in lines)
+                {
+                    if (line.StartsWith("OPENAI_API_KEY="))
+                    {
+                        string key = line.Substring("OPENAI_API_KEY=".Length).Trim();
+                        if (!string.IsNullOrEmpty(key) && key != "your_openai_api_key_here")
+                        {
+                            apiKey = key;
+                            Debug.Log("API key loaded from .env file");
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // If .env file doesn't exist or key is not found, check if it's set in inspector
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                Debug.LogWarning("No API key found in .env file. Please create a .env file with OPENAI_API_KEY=your_key_here");
+                Debug.LogWarning("You can also set the API key in the AIService component in the inspector");
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error loading API key from .env file: {e.Message}");
         }
     }
     
