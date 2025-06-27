@@ -1,7 +1,6 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine.EventSystems;
 
 public class Unit : MonoBehaviour
@@ -21,13 +20,6 @@ public class Unit : MonoBehaviour
     
     [Header("Visuals")]
     public SpriteRenderer spriteRenderer;
-    
-    /*
-    [Header("Health Bar")]
-    public bool showHealthBar = true;
-    public GameObject healthBarPrefab;
-    protected HealthBarController healthBar;
-    */
     
     [Header("Stats")]
     public int currentHealth;
@@ -68,9 +60,6 @@ public class Unit : MonoBehaviour
         if (spriteRenderer == null)
             spriteRenderer = GetComponentInChildren<SpriteRenderer>();
             
-        if (spriteRenderer == null)
-            //Debug.LogError($"Unit {gameObject.name} has no SpriteRenderer!");
-            
         currentHealth = maxHealth;
         remainingMovementPoints = movementRange;
         
@@ -88,15 +77,6 @@ public class Unit : MonoBehaviour
     public virtual void Start()
     {
         UpdateCurrentTile();
-        
-        // Only create health bar if this unit should show it
-        // The base Unit class creates health bars by default, but Player will override this
-        /*
-        if (showHealthBar && healthBarPrefab != null && ShouldShowHealthBar())
-        {
-            CreateHealthBar();
-        }
-        */
     }
     
     // Update current tile reference based on position
@@ -106,11 +86,6 @@ public class Unit : MonoBehaviour
         if (closestTile != null)
         {
             currentTile = closestTile;
-            //Debug.Log($"Updated current tile to {currentTile.name}");
-        }
-        else
-        {
-            //Debug.LogWarning("Failed to find closest tile in UpdateCurrentTile");
         }
     }
     
@@ -187,30 +162,24 @@ public class Unit : MonoBehaviour
         actionValue = 0;
     }
     
-    public virtual void OnTurnStart()
+    // Start turn for this unit
+    public virtual void StartTurn()
     {
+        ActiveUnit = this;
+        LastActiveUnit = this;
+        
         // Reset turn-based flags
         hasMoved = false;
         hasAttacked = false;
         remainingMovementPoints = movementRange;
-        
-        // Reset movement mode
-        isInMoveMode = false;
-        if (currentTile != null)
-            currentTile.ResetColor();
-        
-        // Process status effects
-        ProcessStatusEffects();
-            
-        //Debug.Log($"Turn Start: {gameObject.name} (Speed: {speed})");
     }
     
-    public virtual void OnTurnEnd()
+    // End turn for this unit
+    public virtual void EndTurn()
     {
         // Clear active unit if this was the active unit
         if (ActiveUnit == this)
         {
-            //Debug.Log($"Turn End: {gameObject.name} (Speed: {speed})");
             ActiveUnit = null;
             
             // Reset turn-based flags
@@ -230,11 +199,9 @@ public class Unit : MonoBehaviour
     {
         if (path == null || path.Count == 0)
         {
-            //Debug.Log($"{gameObject.name}: No valid path to move along");
             return;
         }
         
-        //Debug.Log($"{gameObject.name}: Starting movement along path of {path.Count} tiles");
         currentPath = path;
         StartCoroutine(MoveAlongPathCoroutine());
     }
@@ -246,7 +213,6 @@ public class Unit : MonoBehaviour
         
         foreach (HexTile tile in currentPath)
         {
-            //Debug.Log($"{gameObject.name}: Moving to tile {tile.name}");
             Vector3 targetPosition = new Vector3(tile.transform.position.x, tile.transform.position.y, transform.position.z);
             
             while (Vector3.Distance(transform.position, targetPosition) > 0.01f)
@@ -265,7 +231,6 @@ public class Unit : MonoBehaviour
         isMoving = false;
         IsAnyUnitMoving = false;
         hasMoved = true;
-        //Debug.Log($"{gameObject.name}: Finished movement. Remaining movement points: {remainingMovementPoints}");
     }
     
     // Reset unit for a new turn
@@ -332,14 +297,6 @@ public class Unit : MonoBehaviour
     // Die
     protected virtual void Die()
     {
-        /*
-        // Clean up health bar
-        if (healthBar != null)
-        {
-            Destroy(healthBar.gameObject);
-        }
-        */
-        
         // Animation or effect could go here
         Destroy(gameObject);
     }

@@ -30,4 +30,6 @@ public class EnemyData : ScriptableObject
     public AttackSO specialAttack;      // Optional special attack
     [Range(0.0f, 1.0f)]
     public float specialAttackChance = 0.2f;  // Chance to use special attack
+    
+    // Note: All units are spawned at z = -1 to ensure they render in front of the map tiles (which are at z = 0)
 } 

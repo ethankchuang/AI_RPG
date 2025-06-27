@@ -6,12 +6,19 @@ public class WallTile : HexTile
     {
         base.Awake();
         tileType = TileType.Wall;
+        
+        // Ensure wall properties are set immediately
+        isWalkable = false;
+        movementCost = 99; // Effectively impassable
     }
     
     protected override void ApplyTileTypeProperties()
     {
         isWalkable = false;
         movementCost = 99; // Effectively impassable
+        
+        // Double-check that we're properly marked as a wall
+        tileType = TileType.Wall;
     }
     
     protected override void UpdateVisuals()
@@ -46,5 +53,11 @@ public class WallTile : HexTile
             if (gridManager != null)
                 gridManager.ReplaceWithGrassTile(this);
         }
+    }
+    
+    // Override to ensure wall tiles are never considered walkable
+    public override bool IsWalkable()
+    {
+        return false;
     }
 } 

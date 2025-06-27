@@ -27,4 +27,6 @@ public class CharacterData : ScriptableObject
     [Header("Aggro System")]
     [Tooltip("How likely enemies are to target this character (higher = more likely to be targeted)")]
     public int aggroValue = 1;
+    
+    // Note: All units are spawned at z = -1 to ensure they render in front of the map tiles (which are at z = 0)
 } 

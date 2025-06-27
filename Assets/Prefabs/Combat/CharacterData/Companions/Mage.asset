@@ -14,7 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   characterType: 2
   characterName: Jaina
-  description: 
+  description: 'A scholar kicked out of mage school, Jaina is on the rebound looking
+    for adventure. '
   characterSprite: {fileID: 0}
   maxHealth: 30
   attackDamage: 10

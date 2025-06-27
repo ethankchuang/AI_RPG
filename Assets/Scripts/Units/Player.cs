@@ -349,6 +349,7 @@ public class Player : Unit
             // Calculate positions
             Vector3 startPos = transform.position;
             Vector3 targetPos = nextTile.transform.position;
+            targetPos.z = startPos.z; // Preserve z-position to keep unit in front of map
             
             // Move at a fixed speed for consistency
             float distance = Vector3.Distance(startPos, targetPos);
@@ -395,27 +396,19 @@ public class Player : Unit
         }
     }
     
-    public override void ResetForNewTurn()
-    {
-        // Ensure movement range is 5 at the start of each turn
-        movementRange = 5;
-        base.ResetForNewTurn();
-        
-        // Force exit move mode and clear movement range
-        currentState = PlayerState.Idle;
-        isInMoveMode = false; // SYNC WITH BASE CLASS!
-        HideMovementRange();
-    }
-
-    public override void OnTurnStart()
+    public override void StartTurn()
     {
         // Reset to idle state at turn start
         currentState = PlayerState.Idle;
         isInMoveMode = false; // SYNC WITH BASE CLASS!
-        base.OnTurnStart();
+        
+        // Ensure we know our current tile
+        UpdateCurrentTile();
+        
+        base.StartTurn();
     }
     
-    public override void OnTurnEnd()
+    public override void EndTurn()
     {
         // Start coroutine to handle the delay before clearing active unit
         StartCoroutine(HandleTurnEnd());
@@ -424,7 +417,7 @@ public class Player : Unit
     private IEnumerator HandleTurnEnd()
     {   
         // Call base implementation to clear the turn flag and ActiveUnit
-        base.OnTurnEnd();
+        base.EndTurn();
         
         // Force exit move mode and clear movement range
         currentState = PlayerState.Idle;
@@ -453,7 +446,7 @@ public class Player : Unit
         yield return new WaitForSeconds(1.0f);
         
         // Start the turn first
-        base.OnTurnStart();
+        base.StartTurn();
         
         // Re-enable the UI after turn starts
         if (gameUI != null)

@@ -76,9 +76,9 @@ public class Enemy : Unit
     
     // Called at the start of enemy turn
     
-    public override void OnTurnEnd()
+    public override void EndTurn()
     {
-        base.OnTurnEnd();
+        base.EndTurn();
     }
     
     // Execute AI turn logic
@@ -282,7 +282,7 @@ public class Enemy : Unit
         List<HexTile> validPath = new List<HexTile>();
         validPath.Add(path[0]); // Always add the starting tile
         
-        for (int i = 1; i < path.Count - 1; i++) // Skip the last tile (player's tile)
+        for (int i = 1; i < path.Count; i++) // Check all tiles including the last one
         {
             // Check what type of unit is on this tile
             Unit unitOnTile = gridManager.GetUnitOnTile(path[i]);
@@ -291,14 +291,9 @@ public class Enemy : Unit
                 // Tile is unoccupied, add it to valid path
                 validPath.Add(path[i]);
             }
-            else if (unitOnTile is Enemy)
-            {
-                // Can move through other enemies, add it to valid path
-                validPath.Add(path[i]);
-            }
             else
             {
-                // Can't move through players, stop here
+                // Can't move through or land on any occupied tile (enemies or players)
                 break;
             }
         }
@@ -421,12 +416,8 @@ public class Enemy : Unit
                     
                     if (unitOnTile != null)
                     {
-                        // Block movement through players, but allow movement through other enemies
-                        if (unitOnTile is Player)
-                        {
-                            continue; // Block pathfinding through players
-                        }
-                        // If it's another enemy, allow pathfinding through (but can't land on them)
+                        // Block movement through any occupied tiles (both players and enemies)
+                        continue; // Block pathfinding through any units
                     }
                 }
                 
@@ -563,30 +554,22 @@ public class Enemy : Unit
             HexTile nextTile = path[i];
             
             // Check if we can move to this tile
-            // Enemies can pass through other enemies but not through players
+            // Enemies cannot pass through any occupied tiles
             Unit unitOnTile = gridManager != null ? 
                 gridManager.GetUnitOnTile(nextTile) : 
                 null;
                 
-            // If this is the final destination tile and it has any unit, stop
-            if (i == path.Count - 1 && unitOnTile != null)
+            // If this tile has any unit (enemy or player), stop movement
+            if (unitOnTile != null)
             {
-                //Debug.Log($"{gameObject.name}: Final destination tile {i} is occupied, stopping movement");
+                //Debug.Log($"{gameObject.name}: Tile {i} is occupied by {unitOnTile.gameObject.name}, stopping movement");
                 break; // Stop the path here
             }
-            
-            // If this is not the final tile but has a player, stop (can't pass through players)
-            if (i != path.Count - 1 && unitOnTile != null && unitOnTile is Player)
-            {
-                //Debug.Log($"{gameObject.name}: Tile {i} has player, stopping movement");
-                break; // Stop the path here
-            }
-            
-            // If it's another enemy tile and not the final destination, we can pass through
             
             // Calculate positions
             Vector3 startPos = transform.position;
             Vector3 targetPos = nextTile.transform.position;
+            targetPos.z = startPos.z; // Preserve z-position to keep enemy in front of map
             
             // Move at a fixed speed for consistency
             float distance = Vector3.Distance(startPos, targetPos);

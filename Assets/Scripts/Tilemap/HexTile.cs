@@ -243,6 +243,12 @@ public class HexTile : MonoBehaviour
         ApplyTileTypeProperties();
         UpdateVisuals();
     }
+    
+    // Check if this tile is walkable
+    public virtual bool IsWalkable()
+    {
+        return isWalkable;
+    }
     #endregion
 
     public void SetAsTargetableTile()

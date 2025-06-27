@@ -1,7 +1,6 @@
 using UnityEngine;
-using System.Collections.Generic;
 using System.Collections;
-using System.Linq; // Add this for LINQ methods like Select
+using System.Collections.Generic;
 
 public enum GameState
 {
@@ -229,21 +228,38 @@ public class GameManager : MonoBehaviour
     // Initialize the game - set up references and start player turn
     private void InitializeGame()
     {
+        // Start the initialization process as a coroutine to handle timing
+        StartCoroutine(InitializeGameCoroutine());
+    }
+    
+    private IEnumerator InitializeGameCoroutine()
+    {
         // Make sure the grid is generated
         if (gridGenerator != null && gridGenerator.transform.childCount == 0)
             gridGenerator.GenerateGrid();
+        
+        // Wait for map generation to complete
+        RandomMapGenerator mapGenerator = FindObjectOfType<RandomMapGenerator>();
+        if (mapGenerator != null)
+        {
+            yield return new WaitForSeconds(0.1f);
+            yield return new WaitForEndOfFrame();
+        }
         
         // Clear any existing units
         playerUnits.Clear();
         enemyUnits.Clear();
         genericUnits.Clear();
         
-        // Place units
+        // Place units after map generation is complete
         PlaceInitialUnits(true);  // Player units
         PlaceInitialUnits(false); // Enemy units
         
         // Set up camera and references
         SetupInitialReferences();
+        
+        // Final validation to catch any remaining issues
+        StartCoroutine(PostMapGenerationValidation());
     }
     
     // Setup initial references including camera and grid manager
@@ -258,6 +274,9 @@ public class GameManager : MonoBehaviour
             if (gridManager != null)
                 gridManager.playerUnit = playerUnits[0];
         }
+        
+        // Start the first turn after initialization
+        StartNextTurn();
     }
     #endregion
     
@@ -273,7 +292,7 @@ public class GameManager : MonoBehaviour
         }
 
         // End the current player's turn (StartNextTurn will be called from the player's coroutine)
-        player.OnTurnEnd();
+        player.EndTurn();
     }
     
 
@@ -340,10 +359,24 @@ public class GameManager : MonoBehaviour
         // Find a good starting position (different for each player)
         HexTile startTile = FindPlayerStartTile(playerUnits.Count);
         
+        // Additional safety check to ensure we never spawn in walls
+        if (startTile != null && !IsValidPlacementTile(startTile))
+        {
+            startTile = FindAlternativePlayerStartTile(playerUnits.Count);
+        }
+        
         // Place the player unit
         if (startTile != null && playerUnitPrefab != null)
         {
-            GameObject unitObj = Instantiate(playerUnitPrefab, startTile.transform.position, Quaternion.identity);
+            // Final validation before spawning
+            if (!IsValidPlacementTile(startTile))
+            {
+                return;
+            }
+            
+            Vector3 spawnPosition = startTile.transform.position;
+            spawnPosition.z = -1f; // Ensure unit is in front of the map
+            GameObject unitObj = Instantiate(playerUnitPrefab, spawnPosition, Quaternion.identity);
             
             Player playerUnit = unitObj.GetComponent<Player>();
             if (playerUnit != null)
@@ -390,7 +423,7 @@ public class GameManager : MonoBehaviour
         List<HexTile> placementTiles = new List<HexTile>();
         foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
         {
-            if (tile.row >= gridGenerator.gridHeight - 2 && tile.isWalkable && !IsUnitOnTile(tile))
+            if (tile.row >= gridGenerator.gridHeight - 2 && IsValidPlacementTile(tile))
                 placementTiles.Add(tile);
         }
         
@@ -399,17 +432,17 @@ public class GameManager : MonoBehaviour
         {
             foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
             {
-                if (tile.row >= gridGenerator.gridHeight - 4 && tile.isWalkable && !IsUnitOnTile(tile))
+                if (tile.row >= gridGenerator.gridHeight - 4 && IsValidPlacementTile(tile))
                     placementTiles.Add(tile);
             }
         }
         
-        // Last resort: any available walkable tile
+        // Last resort: any available valid tile
         if (placementTiles.Count == 0)
         {
             foreach (HexTile tile in gridGenerator.GetComponentsInChildren<HexTile>())
             {
-                if (tile.isWalkable && !IsUnitOnTile(tile))
+                if (IsValidPlacementTile(tile))
                     placementTiles.Add(tile);
             }
         }
@@ -428,7 +461,16 @@ public class GameManager : MonoBehaviour
             
             // Place enemy unit on the first available tile
             HexTile placementTile = placementTiles[0];
-            GameObject unitObj = Instantiate(enemyUnitPrefab, placementTile.transform.position, Quaternion.identity);
+            
+            // Final safety check before spawning
+            if (!IsValidPlacementTile(placementTile))
+            {
+                return;
+            }
+            
+            Vector3 spawnPosition = placementTile.transform.position;
+            spawnPosition.z = -1f; // Ensure unit is in front of the map
+            GameObject unitObj = Instantiate(enemyUnitPrefab, spawnPosition, Quaternion.identity);
             unitObj.name = $"EnemyUnit_{enemyUnits.Count}";
             
             Enemy enemyUnit = unitObj.GetComponent<Enemy>();
@@ -445,10 +487,6 @@ public class GameManager : MonoBehaviour
                 if (unit != null)
                     genericUnits.Add(unit);
             }
-        }
-        else
-        {
-            Debug.LogWarning($"GameManager: Could not find any available tiles to place enemy unit {enemyUnits.Count}!");
         }
     }
     
@@ -472,28 +510,62 @@ public class GameManager : MonoBehaviour
             
             foreach (HexTile tile in allTiles)
             {
-                if (tile.column == targetCol && tile.row == targetRow && tile.isWalkable && !IsUnitOnTile(tile))
+                if (tile.column == targetCol && 
+                    tile.row == targetRow && 
+                    IsValidPlacementTile(tile))
                     return tile;
             }
         }
         
-        // If designated position is not available, try any walkable tile in the bottom rows
+        // If designated position is not available, try any valid tile in the bottom rows
         for (int row = 0; row < 3; row++) // Check bottom 3 rows
         {
             for (int col = 0; col < gridGenerator.gridWidth; col++)
             {
                 foreach (HexTile tile in allTiles)
                 {
-                    if (tile.column == col && tile.row == row && tile.isWalkable && !IsUnitOnTile(tile))
+                    if (tile.column == col && 
+                        tile.row == row && 
+                        IsValidPlacementTile(tile))
                         return tile;
                 }
             }
         }
         
-        // Last resort: any walkable tile
+        // Last resort: any valid tile
         foreach (HexTile tile in allTiles)
         {
-            if (tile.isWalkable && !IsUnitOnTile(tile))
+            if (IsValidPlacementTile(tile))
+                return tile;
+        }
+        
+        return null;
+    }
+    
+    // Find an alternative starting tile for the player if the primary one is blocked
+    private HexTile FindAlternativePlayerStartTile(int playerIndex)
+    {
+        HexTile[] allTiles = gridGenerator.GetComponentsInChildren<HexTile>();
+        
+        // Try any valid tile in the bottom 5 rows
+        for (int row = 0; row < 5; row++)
+        {
+            for (int col = 0; col < gridGenerator.gridWidth; col++)
+            {
+                foreach (HexTile tile in allTiles)
+                {
+                    if (tile.column == col && 
+                        tile.row == row && 
+                        IsValidPlacementTile(tile))
+                        return tile;
+                }
+            }
+        }
+        
+        // Last resort: any valid tile
+        foreach (HexTile tile in allTiles)
+        {
+            if (IsValidPlacementTile(tile))
                 return tile;
         }
         
@@ -514,6 +586,147 @@ public class GameManager : MonoBehaviour
                 return true;
         }
         return false;
+    }
+    
+    // Check if a tile is a wall (either by type or walkable property)
+    private bool IsWallTile(HexTile tile)
+    {
+        if (tile == null)
+            return false;
+            
+        // Check if it's explicitly a WallTile type
+        if (tile.GetType() == typeof(WallTile))
+            return true;
+            
+        // Check if it's not walkable (walls should not be walkable)
+        if (!tile.isWalkable || !tile.IsWalkable())
+            return true;
+            
+        // Check if the tile type is Wall
+        if (tile.tileType == TileType.Wall)
+            return true;
+            
+        return false;
+    }
+    
+    // Check if a tile is valid for unit placement
+    private bool IsValidPlacementTile(HexTile tile)
+    {
+        if (tile == null)
+            return false;
+            
+        // Must be walkable
+        if (!tile.isWalkable || !tile.IsWalkable())
+            return false;
+            
+        // Must not be a wall
+        if (IsWallTile(tile))
+            return false;
+            
+        // Must not have a unit on it
+        if (IsUnitOnTile(tile))
+            return false;
+            
+        return true;
+    }
+    
+    // Validate and fix unit placements after map generation completes
+    private IEnumerator PostMapGenerationValidation()
+    {
+        // Wait a frame to ensure map generation has completed
+        yield return null;
+        
+        // Check all units and relocate any that are on walls
+        List<Unit> unitsToRelocate = new List<Unit>();
+        
+        foreach (Unit unit in allUnits)
+        {
+            if (unit == null) continue;
+            
+            HexTile unitTile = FindTileAtPosition(unit.transform.position);
+            if (unitTile != null && IsWallTile(unitTile))
+            {
+                unitsToRelocate.Add(unit);
+            }
+        }
+        
+        // Relocate units that are on walls
+        foreach (Unit unit in unitsToRelocate)
+        {
+            RelocateUnitFromWall(unit);
+        }
+        
+        ValidateUnitPlacements();
+    }
+    
+    // Relocate a unit that is currently on a wall tile
+    private void RelocateUnitFromWall(Unit unit)
+    {
+        if (unit == null) return;
+        
+        // Find a valid placement tile
+        HexTile newTile = FindValidPlacementTileForUnit(unit);
+        
+        if (newTile != null)
+        {
+            // Move the unit to the new position
+            Vector3 newPosition = newTile.transform.position;
+            newPosition.z = unit.transform.position.z; // Preserve z-position
+            unit.transform.position = newPosition;
+        }
+        else
+        {
+            Destroy(unit.gameObject);
+        }
+    }
+    
+    // Validate that no units are currently on walls
+    private void ValidateUnitPlacements()
+    {
+        foreach (Unit unit in allUnits)
+        {
+            if (unit == null) continue;
+            
+            HexTile unitTile = FindTileAtPosition(unit.transform.position);
+            if (unitTile != null)
+            {
+                if (IsWallTile(unitTile))
+                {
+                    // Optionally, handle this case if needed
+                }
+                else if (!unitTile.isWalkable || !unitTile.IsWalkable())
+                {
+                    // Optionally, handle this case if needed
+                }
+            }
+        }
+    }
+    
+    // Find the tile at a given world position
+    private HexTile FindTileAtPosition(Vector3 worldPosition)
+    {
+        if (gridGenerator == null) return null;
+        
+        HexTile[] allTiles = gridGenerator.GetComponentsInChildren<HexTile>();
+        HexTile closestTile = null;
+        float closestDistance = float.MaxValue;
+        
+        foreach (HexTile tile in allTiles)
+        {
+            float distance = Vector2.Distance(
+                new Vector2(worldPosition.x, worldPosition.y),
+                new Vector2(tile.transform.position.x, tile.transform.position.y)
+            );
+            
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestTile = tile;
+            }
+        }
+        
+        // Only return the tile if the unit is close enough to it
+        return closestDistance < 0.5f ? closestTile : null;
     }
     #endregion
     
@@ -662,8 +875,8 @@ public class GameManager : MonoBehaviour
         if (nextUnit is Player)
         {
             //Debug.Log("StartNextTurn: Starting individual player turn");
-            // Call OnTurnStart to handle consecutive turn detection
-            nextUnit.OnTurnStart();
+            // Call StartTurn to handle consecutive turn detection
+            nextUnit.StartTurn();
         }
         else if (nextUnit is Enemy)
         {
@@ -741,7 +954,7 @@ public class GameManager : MonoBehaviour
         }
         
         // End their turn (this will clear ActiveUnit)
-        enemy.OnTurnEnd();
+        enemy.EndTurn();
         
         // Check for defeat condition
         if (playerUnits.Count == 0)
@@ -852,5 +1065,59 @@ public class GameManager : MonoBehaviour
             SetGameState(GameState.Defeat);
             HandleDefeat();
         }
+    }
+    
+    // Find a valid placement tile for a specific unit
+    private HexTile FindValidPlacementTileForUnit(Unit unit)
+    {
+        if (unit == null) return null;
+        
+        HexTile[] allTiles = gridGenerator.GetComponentsInChildren<HexTile>();
+        
+        // For player units, prefer bottom rows
+        if (unit is Player)
+        {
+            // Try bottom 3 rows first
+            for (int row = 0; row < 3; row++)
+            {
+                for (int col = 0; col < gridGenerator.gridWidth; col++)
+                {
+                    foreach (HexTile tile in allTiles)
+                    {
+                        if (tile.column == col && 
+                            tile.row == row && 
+                            IsValidPlacementTile(tile))
+                            return tile;
+                    }
+                }
+            }
+        }
+        // For enemy units, prefer top rows
+        else if (unit is Enemy)
+        {
+            // Try top 3 rows first
+            for (int row = gridGenerator.gridHeight - 3; row < gridGenerator.gridHeight; row++)
+            {
+                for (int col = 0; col < gridGenerator.gridWidth; col++)
+                {
+                    foreach (HexTile tile in allTiles)
+                    {
+                        if (tile.column == col && 
+                            tile.row == row && 
+                            IsValidPlacementTile(tile))
+                            return tile;
+                    }
+                }
+            }
+        }
+        
+        // Fallback: any valid tile
+        foreach (HexTile tile in allTiles)
+        {
+            if (IsValidPlacementTile(tile))
+                return tile;
+        }
+        
+        return null;
     }
 } 
