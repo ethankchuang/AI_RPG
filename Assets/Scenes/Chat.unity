@@ -940,7 +940,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 83c10585a8277471b8a9b67003998484, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  apiKey: 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
+  apiKey: 
   maxConversationHistory: 20
 --- !u!4 &1112768713
 Transform:
