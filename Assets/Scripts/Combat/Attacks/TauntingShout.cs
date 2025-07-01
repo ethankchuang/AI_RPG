@@ -11,7 +11,7 @@ public class TauntingShout : AttackSO
     {
         // Set default values for taunting shout
         attackName = "Taunting Shout";
-        description = $"Increase your taunt value by {aggroIncrease} for {tauntDuration} actions, making enemies more likely to target you.";
+        description = $"Increase your taunt value by {aggroIncrease} for {tauntDuration} actions and reduce damage taken by 40% for the next turn.";
         damageMultiplier = 0.0f; // This is a self-buff ability
         baseDamage = 0;
         range = 0;  // Self-target
@@ -26,6 +26,10 @@ public class TauntingShout : AttackSO
         // Create and apply the taunt effect
         TauntEffect tauntEffect = new TauntEffect(aggroIncrease, tauntDuration);
         attacker.ApplyStatusEffect(tauntEffect);
+        
+        // Create and apply the damage reduction effect (40% reduction for 1 turn)
+        DamageReductionEffect damageReductionEffect = new DamageReductionEffect(0.4f, 1);
+        attacker.ApplyStatusEffect(damageReductionEffect);
         
         // Call base method for VFX and effects
         base.ExecuteNonTargeted(attacker);

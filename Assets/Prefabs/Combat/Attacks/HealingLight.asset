@@ -13,11 +13,13 @@ MonoBehaviour:
   m_Name: HealingLight
   m_EditorClassIdentifier: 
   attackName: Healing Light
-  description: A divine ability that heals the caster.
-  damage: 0
+  description: A divine ability that heals the caster based on their attack stat.
+  damageMultiplier: 0
+  baseDamage: 0
   range: 0
   SPCost: 1
+  requiresTarget: 0
   icon: {fileID: 0}
   vfxPrefab: {fileID: 0}
   effects: []
-  healAmount: 8
+  healMultiplier: 2

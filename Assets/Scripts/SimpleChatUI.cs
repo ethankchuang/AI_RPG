@@ -15,6 +15,12 @@ public class SimpleChatUI : MonoBehaviour
     [SerializeField] private Transform messageContainer;
     [SerializeField] private Button nextButton;
     [SerializeField] private TextMeshProUGUI chatText; // Single text component for all messages
+    // Removed textBackgroundPanel - no longer using black background
+    
+    [Header("Background Image")]
+    [SerializeField] private UnityEngine.UI.RawImage backgroundImageDisplay;
+    [SerializeField] private bool enableImageGeneration = true;
+    [SerializeField] private float imageGenerationDelay = 1f; // Delay before generating image
     
     [Header("Message Settings")]
     [SerializeField] private Color userMessageColor = new Color(0.2f, 0.6f, 1f);
@@ -66,12 +72,14 @@ public class SimpleChatUI : MonoBehaviour
         public string sender;
         public string content;
         public Color color;
+        public GameObject messageBox; // Reference to the message box GameObject
         
         public MessageData(string sender, string content, Color color)
         {
             this.sender = sender;
             this.content = content;
             this.color = color;
+            this.messageBox = null;
         }
     }
     
@@ -110,6 +118,12 @@ public class SimpleChatUI : MonoBehaviour
         
         // Ensure AIService exists
         EnsureAIServiceExists();
+        
+        // Ensure ImageGenerationService exists
+        EnsureImageGenerationServiceExists();
+        
+        // Ensure UI components are assigned to ImageGenerationService
+        AssignImageServiceUIComponents();
         
         // Check if we have saved state to load
         Debug.Log($"SimpleChatUI: Checking for saved state - ChatStateManager.Instance: {ChatStateManager.Instance != null}");
@@ -174,6 +188,44 @@ public class SimpleChatUI : MonoBehaviour
         await GeneratePostCombatStory();
     }
     
+    private async System.Threading.Tasks.Task GenerateBackgroundImageAndWait()
+    {
+        if (ImageGenerationService.Instance == null)
+        {
+            Debug.LogWarning("ImageGenerationService not available for background image generation");
+            return;
+        }
+        
+        try
+        {
+            // Wait for the specified delay
+            await System.Threading.Tasks.Task.Delay((int)(imageGenerationDelay * 1000));
+            
+            // Create story context for image generation
+            string storyContext = GetStoryContextForImageGeneration();
+            
+            Debug.Log($"Generating background image for context: {storyContext}");
+            
+            // Generate the background image
+            Texture2D backgroundTexture = await ImageGenerationService.Instance.GenerateBackgroundImageAsync(storyContext);
+            
+            if (backgroundTexture != null)
+            {
+                // Display the generated image
+                ImageGenerationService.Instance.DisplayImage(backgroundTexture);
+                Debug.Log("Background image generated and displayed successfully");
+            }
+            else
+            {
+                Debug.LogWarning("Failed to generate background image");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Error generating background image: {e.Message}");
+        }
+    }
+    
     private void EnsureAIServiceExists()
     {
         if (AIService.Instance == null)
@@ -181,6 +233,37 @@ public class SimpleChatUI : MonoBehaviour
             Debug.LogWarning("AIService not found! Creating one...");
             GameObject aiServiceObj = new GameObject("AIService");
             aiServiceObj.AddComponent<AIService>();
+        }
+    }
+    
+    private void EnsureImageGenerationServiceExists()
+    {
+        if (ImageGenerationService.Instance == null)
+        {
+            Debug.LogWarning("ImageGenerationService not found! Creating one...");
+            GameObject imageServiceObj = new GameObject("ImageGenerationService");
+            imageServiceObj.AddComponent<ImageGenerationService>();
+            
+            // Set up the image display references
+            var imageService = imageServiceObj.GetComponent<ImageGenerationService>();
+            if (backgroundImageDisplay != null)
+            {
+                imageService.rawImageDisplay = backgroundImageDisplay;
+            }
+        }
+    }
+    
+    private void AssignImageServiceUIComponents()
+    {
+        if (ImageGenerationService.Instance != null && backgroundImageDisplay != null)
+        {
+            // Assign the RawImage component to the ImageGenerationService
+            ImageGenerationService.Instance.rawImageDisplay = backgroundImageDisplay;
+            Debug.Log("SimpleChatUI: Assigned backgroundImageDisplay to ImageGenerationService");
+        }
+        else
+        {
+            Debug.LogWarning("SimpleChatUI: Cannot assign UI components - ImageGenerationService or backgroundImageDisplay is null");
         }
     }
     
@@ -241,6 +324,12 @@ public class SimpleChatUI : MonoBehaviour
             if (messagesInCurrentChapter >= MESSAGES_PER_CHAPTER)
             {
                 AdvanceToNextChapter();
+            }
+            
+            // Generate background image and wait for it before completing
+            if (enableImageGeneration)
+            {
+                await GenerateBackgroundImageAndWait();
             }
             
             Debug.Log("GenerateResponse: Response generation complete.");
@@ -399,10 +488,10 @@ Story: {storySummary}
 Instructions: {chapterInstructions}
 Input: {userMessage}
 
-Generate a brief companion interaction scene. Focus on dialogue and character development.
+Generate a brief companion interaction scene. Keep it concise and focused.
 
 === COMPANION INTERACTION ===
-[2-3 sentences describing the interaction with companions, their responses, and any insights gained]";
+[1-2 short sentences describing the interaction with companions and their responses]";
         
         string response = await AIService.Instance.SendMessageAsync(companionPrompt);
         AddAIMessage(response);
@@ -428,10 +517,10 @@ Story: {storySummary}
 Instructions: {chapterInstructions}
 Input: {userMessage}
 
-Generate brief story progression:
+Generate brief story progression. Keep it concise:
 
 === STORY SCENE ===
-[2-3 sentences describing what happens next, natural and unexpected developments]";
+[1-2 short sentences describing what happens next]";
         
         string response = await AIService.Instance.SendMessageAsync(storyPrompt);
         AddAIMessage(response);
@@ -456,10 +545,10 @@ Story: {storySummary}
 Instructions: {chapterInstructions}
 Input: {userMessage}
 
-Generate a brief combat scene:
+Generate a brief combat scene. Keep it concise:
 
 === COMBAT SCENE ===
-[2-3 sentences describing the combat situation, enemies, and immediate danger]";
+[1-2 short sentences describing the combat situation and enemies]";
         
         string response = await AIService.Instance.SendMessageAsync(combatPrompt);
         AddAIMessage(response);
@@ -742,6 +831,25 @@ Write a single sentence summary that captures the most important thing that happ
             
             // Add story point about the combat outcome
             AddStoryPoint($"Combat encounter completed in {currentChapter} chapter");
+            
+            // Generate and save background image for post-combat scene
+            if (enableImageGeneration && ImageGenerationService.Instance != null)
+            {
+                Debug.Log("GeneratePostCombatStory: Generating post-combat background image...");
+                string storyContext = GetStoryContextForImageGeneration();
+                Texture2D backgroundTexture = await ImageGenerationService.Instance.GenerateBackgroundImageAsync(storyContext);
+                
+                if (backgroundTexture != null)
+                {
+                    // Display the image
+                    ImageGenerationService.Instance.DisplayImage(backgroundTexture);
+                    Debug.Log("GeneratePostCombatStory: Post-combat background image generated and displayed successfully");
+                }
+                else
+                {
+                    Debug.LogWarning("GeneratePostCombatStory: Failed to generate post-combat background image");
+                }
+            }
         }
         catch (System.Exception e)
         {
@@ -792,15 +900,21 @@ Story: {storySummary}
 
 INSTRUCTIONS: {GetChapterSpecificInstructions()}
 
-INTRODUCTION: Generate a brief opening story scene for the tavern chapter.
+INTRODUCTION: Generate a brief opening story scene for the tavern chapter. Keep it concise and to the point.
 
 === STORY SCENE ===
-[2-3 sentences describing the tavern setting, introducing the companions, and setting up the adventure.]";
+[1-2 short sentences describing the tavern setting and introducing the companions.]";
             
             string response = await AIService.Instance.SendMessageAsync(initialPrompt);
             
             // Display the response
             AddAIMessage(response);
+            
+            // Generate initial background image
+            if (enableImageGeneration)
+            {
+                await GenerateBackgroundImageAndWait();
+            }
             
             // Generate action options
             await GenerateActionOptions();
@@ -1018,7 +1132,7 @@ INTRODUCTION: Generate a brief opening story scene for the tavern chapter.
                               $"COMBAT: [combat option description]\n" +
                               $"COMPANION: [companion interaction option]\n" +
                               $"STORY: [story progression option]\n" +
-                              $"Keep each option concise but descriptive (1-2 sentences).";
+                              $"Keep each option short and concise (max 10 words each).";
         
         try
         {
@@ -1056,9 +1170,9 @@ INTRODUCTION: Generate a brief opening story scene for the tavern chapter.
             {
                 Debug.LogWarning($"GenerateActionOptions: Failed to parse AI-generated options (got {currentActionOptions.Count}), using fallback options");
                 currentActionOptions.Clear();
-                currentActionOptions.Add(new ActionOption("Fight the enemy with all your might", "combat", "Engage in combat"));
-                currentActionOptions.Add(new ActionOption("Talk to your companions about the situation", "companion", "Interact with companions"));
-                currentActionOptions.Add(new ActionOption("Continue exploring the area", "story", "Progress the story"));
+                currentActionOptions.Add(new ActionOption("Fight the enemy", "combat", "Engage in combat"));
+                currentActionOptions.Add(new ActionOption("Talk to companions", "companion", "Interact with companions"));
+                currentActionOptions.Add(new ActionOption("Continue exploring", "story", "Progress the story"));
             }
             
             Debug.Log($"GenerateActionOptions: Generated {currentActionOptions.Count} options, calling DisplayActionOptions");
@@ -1069,9 +1183,9 @@ INTRODUCTION: Generate a brief opening story scene for the tavern chapter.
             Debug.LogError($"GenerateActionOptions: Error generating action options: {e.Message}");
             // Fallback to basic options if AI fails
             currentActionOptions.Clear();
-            currentActionOptions.Add(new ActionOption("Fight the enemy with all your might", "combat", "Engage in combat"));
-            currentActionOptions.Add(new ActionOption("Talk to your companions about the situation", "companion", "Interact with companions"));
-            currentActionOptions.Add(new ActionOption("Continue exploring the area", "story", "Progress the story"));
+            currentActionOptions.Add(new ActionOption("Fight the enemy", "combat", "Engage in combat"));
+            currentActionOptions.Add(new ActionOption("Talk to companions", "companion", "Interact with companions"));
+            currentActionOptions.Add(new ActionOption("Continue exploring", "story", "Progress the story"));
             Debug.Log("GenerateActionOptions: Using fallback options, calling DisplayActionOptions");
             DisplayActionOptions();
         }
@@ -1099,6 +1213,31 @@ INTRODUCTION: Generate a brief opening story scene for the tavern chapter.
         return context;
     }
     
+    private string GetStoryContextForImageGeneration()
+    {
+        // Create a context specifically for image generation
+        string context = $"Chapter: {currentChapter}, ";
+        
+        // Add chapter-specific context
+        context += GetChapterContext() + " ";
+        
+        // Add recent story points for visual context
+        if (storyPoints.Count > 0)
+        {
+            var recentStoryPoints = storyPoints.TakeLast(2).ToList();
+            context += "Recent events: " + string.Join(" ", recentStoryPoints.Select(sp => sp.description)) + ". ";
+        }
+        
+        // Add the most recent message for immediate context
+        if (messageHistory.Count > 0)
+        {
+            var lastMessage = messageHistory[messageHistory.Count - 1];
+            context += $"Current situation: {lastMessage.content}. ";
+        }
+        
+        return context;
+    }
+    
     private void DisplayActionOptions()
     {
         Debug.Log($"DisplayActionOptions: Called with {currentActionOptions.Count} options");
@@ -1120,4 +1259,6 @@ INTRODUCTION: Generate a brief opening story scene for the tavern chapter.
         Debug.Log($"DisplayActionOptions: Final options text: {optionsText}");
         AddAIMessage(optionsText);
     }
+
+    // Removed background panel methods - no longer using black background
 } 

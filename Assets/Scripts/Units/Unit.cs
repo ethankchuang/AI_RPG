@@ -244,7 +244,10 @@ public class Unit : MonoBehaviour
     // Take damage
     public virtual void TakeDamage(int amount)
     {
-        currentHealth -= amount;
+        // Check for damage reduction effects
+        int finalDamage = ApplyDamageReduction(amount);
+        
+        currentHealth -= finalDamage;
         
         // Visual feedback
         StartCoroutine(FlashSprite(Color.red, 0.2f));
@@ -254,6 +257,25 @@ public class Unit : MonoBehaviour
             currentHealth = 0;
             Die();
         }
+    }
+    
+    // Apply damage reduction from status effects
+    protected virtual int ApplyDamageReduction(int originalDamage)
+    {
+        int finalDamage = originalDamage;
+        
+        // Check for damage reduction effects
+        foreach (StatusEffect effect in activeEffects)
+        {
+            if (effect is DamageReductionEffect damageReduction)
+            {
+                finalDamage = damageReduction.ApplyDamageReduction(finalDamage);
+                Debug.Log($"{name} damage reduced from {originalDamage} to {finalDamage} by {damageReduction.damageReductionPercent * 100}% reduction");
+                break; // Only apply the first damage reduction effect found
+            }
+        }
+        
+        return finalDamage;
     }
     
     // Visual feedback for damage
