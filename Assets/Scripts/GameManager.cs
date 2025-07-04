@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -767,6 +768,8 @@ public class GameManager : MonoBehaviour
         {
             Debug.LogWarning("BattleResultUI not found! Cannot show victory screen.");
         }
+        
+        // Don't automatically return to story - let the continue button handle it
     }
     
     // Handle defeat

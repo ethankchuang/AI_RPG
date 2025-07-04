@@ -244,7 +244,10 @@ public class BattleResultUI : MonoBehaviour
     
     private void ReturnToChat()
     {
-        // Load the Chat scene
-        SceneManager.LoadScene("Chat");
+        // Load the Story scene
+        SceneManager.LoadScene("Story");
+        
+        // The LinearStoryUI.OnReturnFromCombat() will be called automatically
+        // when the story scene loads and the LinearStoryUI initializes
     }
 } 

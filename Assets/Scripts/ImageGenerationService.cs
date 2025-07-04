@@ -40,7 +40,6 @@ public class ImageGenerationService : MonoBehaviour
     
     [Header("Image Settings")]
     private string defaultSize = "1024x1024"; // DALL-E 2 only supports 1024x1024
-    private string defaultModel = "dall-e-2"; // Faster and cheaper than DALL-E 3
     // Note: quality parameter is not supported by DALL-E 2
     
     [Header("Model Selection")]
